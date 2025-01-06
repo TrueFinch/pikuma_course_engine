@@ -57,3 +57,15 @@ target_link_libraries(${ENGINE_LIB}
 )
 
 #TODO create install script later
+
+
+if (BUILD_DEMO)
+	# Copying shared library to demo target directory
+	add_custom_command(
+			TARGET ${ENGINE_LIB} POST_BUILD
+			COMMAND ${CMAKE_COMMAND} -E copy_if_different
+			$<TARGET_FILE:${ENGINE_LIB}>
+			$<TARGET_FILE_DIR:demo>
+			COMMENT "Copying shared library to demo target directory"
+	)
+endif ()

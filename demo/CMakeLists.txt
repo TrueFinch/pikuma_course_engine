@@ -13,5 +13,9 @@ set(DEMO_SOURCES
 
 add_executable(${DEMO_TARGET} ${DEMO_HEADERS} ${DEMO_SOURCES})
 
+set_target_properties(${DEMO_TARGET} PROPERTIES
+		RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
 target_link_libraries(${DEMO_TARGET} PRIVATE ${ENGINE_LIB})
-target_compile_features(${DEMO_TARGET} PRIVATE cxx_std_17)
+target_compile_features(${DEMO_TARGET} PRIVATE cxx_std_20)

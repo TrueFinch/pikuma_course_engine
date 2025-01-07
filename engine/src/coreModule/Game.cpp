@@ -2,19 +2,27 @@
 // Created by Vladimir Glushkov on 18.12.2024.
 //
 
-#include <iostream>
-#include <ostream>
-
 #include "engine/coreModule/Game.h"
+
+#include <iostream>
+
+#include "engine/logModule/Log.h"
+#include "engine/logModule/LogManager.h"
+#include "engine/logModule/LogManagerInstance.h"
 #include "engine/utilsModule/Types.h"
+#include "logModule/observers/SpdLogger.h"
 
 pce::Game::Game()
 	: m_window(nullptr, SDL_DestroyWindow)
 	, m_renderer(nullptr, SDL_DestroyRenderer) {}
 
 void pce::Game::Initialize() {
+	// init game systems
+	logModule::LogManagerInstance::Init(logModule::LogManager::Create());
+	logModule::LogManagerInstance::GetInstance().RegisterObserver(std::make_unique<logModule::SpdLogger>());
+
 	if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
-		std::cerr << "SDL_Init Error: " << SDL_GetError() << std::endl;
+		logError("SDL_Init Error: {}", SDL_GetError());
 		return;
 	}
 
@@ -29,7 +37,7 @@ void pce::Game::Initialize() {
 	));
 
 	if (!m_window) {
-		std::cerr << "SDL_CreateWindow Error: " << SDL_GetError() << std::endl;
+		logError("SDL_CreateWindow Error: {}", SDL_GetError());
 		return;
 	}
 	// create sdl renderer
@@ -37,7 +45,7 @@ void pce::Game::Initialize() {
 		m_window.get(), -1, 0
 	));
 	if (!m_renderer) {
-		std::cerr << "SDL_CreateRenderer Error: " << SDL_GetError() << std::endl;
+		logError("SDL_CreateRenderer Error: {}", SDL_GetError());
 		return;
 	}
 
@@ -76,7 +84,7 @@ void pce::Game::ProcessInput() {
 				break;
 			}
 			default:
-				std::cout << "Unknown SDL_EventType (hex): 0x" << std::hex << sdlEvent.type << std::endl;
+				logWarning("Unknown SDL_EventType (hex): {:#x}", sdlEvent.type);
 		}
 	}
 }

@@ -6,6 +6,7 @@
 #include <ostream>
 
 #include "engine/coreModule/Game.h"
+#include "engine/utilsModule/Types.h"
 
 pce::Game::Game()
 	: m_window(nullptr, SDL_DestroyWindow)
@@ -16,8 +17,10 @@ void pce::Game::Initialize() {
 		std::cerr << "SDL_Init Error: " << SDL_GetError() << std::endl;
 		return;
 	}
-	// create sdl window
+
+	// TODO: move to settings
 	int width = 1280, height = 800;
+	// create sdl window
 	m_window.reset(SDL_CreateWindow(
 		nullptr,
 		SDL_WINDOWPOS_CENTERED,
@@ -37,6 +40,9 @@ void pce::Game::Initialize() {
 		std::cerr << "SDL_CreateRenderer Error: " << SDL_GetError() << std::endl;
 		return;
 	}
+
+	// TODO: add toggle fullscreen to settings
+	// SDL_SetWindowFullscreen(m_window.get(), SDL_WINDOW_FULLSCREEN_DESKTOP);
 }
 
 void pce::Game::Run() {
@@ -45,6 +51,7 @@ void pce::Game::Run() {
 		ProcessInput();
 		Update();
 		Render();
+		Delay();
 	}
 }
 
@@ -74,7 +81,15 @@ void pce::Game::ProcessInput() {
 	}
 }
 
+void pce::Game::Delay() {
+	if (const uint32 ticks = SDL_GetTicks(); m_milliPerFrame + m_prevFrameMillis > ticks) {
+		SDL_Delay(m_milliPerFrame + m_prevFrameMillis - ticks);
+	}
+}
+
 void pce::Game::Update() {
+	m_deltaTime = static_cast<float>(SDL_GetTicks() - m_prevFrameMillis) / 1000.f;
+	m_prevFrameMillis = SDL_GetTicks();
 	//TODO: update game systems
 }
 

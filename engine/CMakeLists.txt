@@ -10,6 +10,7 @@ target_compile_features(${ENGINE_LIB} PUBLIC cxx_std_20)
 # header files
 set(ENGINE_HEADERS
 		include/engine/coreModule/Game.h
+		include/engine/utilsModule/Types.h
 )
 
 # source files

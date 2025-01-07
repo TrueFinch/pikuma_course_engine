@@ -5,17 +5,33 @@ project(Engine LANGUAGES CXX)
 option(ENGINE_BUILD_TESTS "Build tests for Engine" OFF)
 
 add_library(${ENGINE_LIB} SHARED)
-target_compile_features(${ENGINE_LIB} PUBLIC cxx_std_20)
+set_target_properties(${ENGINE_LIB}
+		PROPERTIES
+		CXX_STANDARD 20
+		CXX_STANDARD_REQUIRED YES
+		CXX_EXTENSIONS NO
+)
+target_compile_options(${ENGINE_LIB} PRIVATE -std=c++20)
 
 # header files
 set(ENGINE_HEADERS
 		include/engine/coreModule/Game.h
 		include/engine/utilsModule/Types.h
+
+		include/engine/logModule/Log.h
+		include/engine/logModule/LogObserver.h
+		include/engine/logModule/LogManager.h
+		include/engine/logModule/LogManagerInstance.h
+
+		src/logModule/observers/SpdLogger.h
 )
 
 # source files
 set(ENGINE_SOURCES
 		src/coreModule/Game.cpp
+		src/logModule/Log.cpp
+		src/logModule/LogManager.cpp
+		src/logModule/observers/SpdLogger.cpp
 )
 
 target_sources(${ENGINE_LIB}

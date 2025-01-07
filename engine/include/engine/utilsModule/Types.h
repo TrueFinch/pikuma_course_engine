@@ -8,3 +8,9 @@
 
 using int32 = int32_t;
 using uint32 = uint32_t;
+
+namespace pce {
+	enum class eLogLevel {
+		PCE_LOG, PCE_WARNING, PCE_ERROR
+	};
+}

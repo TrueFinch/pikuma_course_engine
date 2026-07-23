@@ -13,6 +13,7 @@
 #include "engine/utilsModule/Types.h"
 
 namespace pce {
+	class Registry;
 #pragma region Entity
 
 	namespace details {
@@ -324,9 +325,92 @@ namespace pce {
 	public:
 		virtual ~ISystem() = default;
 
-		virtual void Update(float dt) = 0;
+		virtual void Update(Registry& registry, float dt) = 0;
 
-		virtual void FixedUpdate(float dt) = 0;
+		virtual void FixedUpdate(Registry& registry, float dt) = 0;
+	};
+
+	class SystemManager final {
+	public:
+		template<typename TSystem, typename... TArgs>
+			requires std::is_constructible_v<TSystem, TArgs...>
+					&& std::derived_from<TSystem, ISystem>
+		void EmplaceSystem(TArgs&&... args) {
+			m_systems.emplace_back(std::make_unique<TSystem>(std::forward<TArgs>(args)...));
+		}
+
+		void Update(Registry& registry, float dt);
+
+	private:
+		std::vector<std::unique_ptr<ISystem>> m_systems;
+	};
+
+	class Registry final {
+	public:
+		~Registry() = default;
+
+		Entity CreateEntity();
+
+		template<typename TComponent>
+			requires std::derived_from<TComponent, BaseComponent<TComponent>>
+		void RegisterComponent() {
+			//todo: replace with custom assert
+			assert(!m_poolManager.HasComponent<TComponent>());
+			m_poolManager.RegisterComponent<TComponent>();
+		}
+
+		template<typename TComponent>
+			requires std::derived_from<std::remove_cvref_t<TComponent>, BaseComponent<std::remove_cvref_t<TComponent>>>
+		void AddComponent(const Entity& entity, TComponent&& component) {
+			EmplaceComponent<TComponent>(entity, std::forward<TComponent>(component));
+		}
+
+		template<typename TComponent, typename... TArgs>
+			requires std::is_constructible_v<TComponent, TArgs...>
+					&& std::derived_from<TComponent, BaseComponent<TComponent>>
+		void EmplaceComponent(const Entity& entity, TArgs&&... args) {
+			//todo: replace with custom assert
+			assert(!m_poolManager.HasComponent<TComponent>(entity));
+			m_poolManager.EmplaceComponent<TComponent>(entity, std::forward<TArgs>(args)...);
+			const auto componentId = TComponent::GetTypeId();
+			m_entityManager.GetSignature(entity).set(componentId);
+		}
+
+		template<typename TComponent>
+			requires std::derived_from<TComponent, BaseComponent<TComponent>>
+		void RemoveComponent(const Entity& entity) {
+			//todo: replace with custom assert
+			assert(m_poolManager.HasComponent<TComponent>(entity));
+			m_poolManager.RemoveComponent<TComponent>(entity);
+			const auto componentId = TComponent::GetTypeId();
+			m_entityManager.GetSignature(entity).reset(componentId);
+		}
+
+
+		template<typename TComponent>
+			requires std::derived_from<TComponent, BaseComponent<TComponent>>
+		[[nodiscard]] bool HasComponent(const Entity& entity) const {
+			return m_poolManager.HasComponent<TComponent>(entity);
+		}
+
+
+		template<typename TComponent>
+			requires std::derived_from<TComponent, BaseComponent<TComponent>>
+		TComponent& GetComponent(const Entity& entity) {
+			return m_poolManager.GetComponent<TComponent>(entity);
+		}
+
+		template<typename TComponent>
+			requires std::derived_from<TComponent, BaseComponent<TComponent>>
+		const TComponent& GetComponent(const Entity& entity) const {
+			return m_poolManager.GetComponent<TComponent>(entity);
+		}
+
+		void DestroyEntity(const Entity& entity);
+
+	private:
+		EntityManager m_entityManager;
+		PoolManager m_poolManager;
 	};
 
 #pragma endregion

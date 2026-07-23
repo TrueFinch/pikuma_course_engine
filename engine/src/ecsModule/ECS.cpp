@@ -62,6 +62,22 @@ void pce::PoolManager::ClearComponents(const Entity& entity, const details::Sign
 
 #pragma endregion
 #pragma region System
+
+void pce::SystemManager::Update(Registry& registry, float dt) {
+	for (auto i = 0; i < m_systems.size(); ++i) {
+		m_systems[i]->Update(registry, dt);
+	}
+}
+
+pce::Entity pce::Registry::CreateEntity() {
+	return m_entityManager.CreateEntity();
+}
+
+void pce::Registry::DestroyEntity(const Entity& entity) {
+	m_poolManager.ClearComponents(entity, m_entityManager.GetSignature(entity));
+	m_entityManager.DestroyEntity(entity);
+}
+
 #pragma endregion
 
 size_t std::hash<pce::Entity>::operator()(const pce::Entity& entity) const noexcept {

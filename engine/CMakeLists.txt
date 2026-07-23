@@ -24,6 +24,7 @@ set(ENGINE_HEADERS
 		include/engine/logModule/LogManagerInstance.h
 
 		include/engine/logModule/SpdLogger.h
+		include/engine/ecsModule/ECS.h
 )
 
 # source files
@@ -32,6 +33,7 @@ set(ENGINE_SOURCES
 		src/logModule/Log.cpp
 		src/logModule/LogManager.cpp
 		src/logModule/observers/SpdLogger.cpp
+		src/ecsModule/ECS.cpp
 )
 
 target_sources(${ENGINE_LIB}

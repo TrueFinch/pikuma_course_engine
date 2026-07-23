@@ -44,6 +44,17 @@ const pce::details::Signature& pce::EntityManager::GetSignature(const Entity& en
 	return m_entityComponentSignatures[entity.GetIndex()];
 }
 
+void pce::PoolManager::ClearComponents(const Entity& entity, const details::Signature& signature) const {
+	for (auto i = 0; i < signature.size(); ++i) {
+		if (!signature.test(i)) {
+			continue;
+		}
+		if (i < m_componentPools.size() && m_componentPools[i]) {
+			m_componentPools[i]->Remove(entity);
+		}
+	}
+}
+
 size_t std::hash<pce::Entity>::operator()(const pce::Entity& entity) const noexcept {
 	return std::hash<pce::Entity::ValueType>{}(entity.m_value);
 }

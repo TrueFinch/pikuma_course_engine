@@ -5,6 +5,9 @@
 #pragma once
 
 #include <bitset>
+#include <cassert>
+#include <limits>
+#include <memory>
 #include <vector>
 
 #include "engine/utilsModule/Types.h"
@@ -104,6 +107,212 @@ namespace pce {
 			return Derived::COMPONENT_NAME;
 		}
 	};
+
+	class IPool {
+	public:
+		virtual ~IPool() = default;
+
+		virtual void Remove(const Entity& entity) = 0;
+	};
+
+	template<typename TComponent>
+		requires std::derived_from<TComponent, BaseComponent<TComponent>>
+	class Pool: public IPool {
+		static constexpr size_t INVALID_INDEX = std::numeric_limits<size_t>::max();
+
+	public:
+		Pool() = default;
+
+		Pool(const Pool&) = delete;
+
+		Pool(Pool&&) = delete;
+
+		Pool& operator=(const Pool&) = delete;
+
+		Pool& operator=(Pool&&) = delete;
+
+		~Pool() override = default;
+
+		[[nodiscard]] bool Empty() const {
+			return m_components.empty();
+		}
+
+		void Clear() {
+			m_components.clear();
+			m_entities.clear();
+			m_entityToIndex.clear();
+		}
+
+		void Add(const Entity& entity, TComponent&& component) {
+			Emplace(entity, std::move(component));
+		}
+
+		template<typename... TArgs>
+			requires std::is_constructible_v<TComponent, TArgs...>
+		void Emplace(const Entity& entity, TArgs&&... args) {
+			//todo: replace with custom assert
+			assert(!Has(entity) && "Component already exists!");
+			const auto entityIndex = entity.GetIndex();
+			if (entityIndex >= m_entityToIndex.size()) {
+				// resize m_entityToIndex to handle new entity
+				m_entityToIndex.resize(entityIndex + 1, INVALID_INDEX);
+			}
+			const auto newIndex = m_components.size();
+			m_entities.emplace_back(entity);
+			m_components.emplace_back(std::forward<TArgs>(args)...);
+			m_entityToIndex[entityIndex] = newIndex;
+		}
+
+		void Set(const Entity& entity, TComponent&& component) {
+			//todo: replace with custom assert
+			assert(Has(entity) && "Entity is not found!");
+			const auto entityIndex = entity.GetIndex();
+			const auto index = m_entityToIndex[entityIndex];
+			m_components[index] = std::move(component);
+		}
+
+		void Remove(const Entity& entity) override {
+			//todo: replace with custom assert
+			assert(Has(entity) && "Entity is not found!");
+			const auto entityIndex = entity.GetIndex();
+			const auto index = m_entityToIndex[entityIndex];
+			const auto lastIndex = m_components.size() - 1;
+			if (index != lastIndex) {
+				const auto lastEntity = m_entities[lastIndex];
+				// swap removing entity with last to do pop back
+				m_components[index] = std::move(m_components[lastIndex]);
+				m_entities[index] = std::move(m_entities[lastIndex]);
+				// update index for swaped entity
+				m_entityToIndex[lastEntity.GetIndex()] = index;
+			}
+			m_entityToIndex[entityIndex] = INVALID_INDEX;
+			m_components.pop_back();
+		}
+
+		[[nodiscard]] TComponent& Get(const Entity& entity) {
+			//todo: replace with custom assert
+			assert(Has(entity) && "Entity is not found!");
+			return m_components[m_entityToIndex[entity.GetIndex()]];
+		}
+
+		[[nodiscard]] const TComponent& Get(const Entity& entity) const {
+			//todo: replace with custom assert
+			assert(Has(entity));
+			return m_components[m_entityToIndex[entity.GetIndex()]];
+		}
+
+		[[nodiscard]] bool Has(const Entity& entity) const {
+			const auto entityIndex = entity.GetIndex();
+			if (entityIndex >= m_entityToIndex.size()) {
+				// no element in 'm_entityToIndex' for the given entity
+				return false;
+			}
+			const auto index = m_entityToIndex[entityIndex];
+			if (index == INVALID_INDEX) {
+				// no component was saved for the given entity
+				return false;
+			}
+			// check that both the generation and the id match
+			return m_entities[index] == entity;
+		}
+
+	private:
+		// components
+		std::vector<TComponent> m_components;
+		// entities
+		std::vector<Entity> m_entities;
+		// entity index to m_data/m_dense index
+		std::vector<size_t> m_entityToIndex;
+	};
+
+	class PoolManager final {
+	public:
+		template<typename TComponent>
+			requires std::derived_from<TComponent, BaseComponent<TComponent>>
+		void RegisterComponent() {
+			const auto componentId = TComponent::GetTypeId();
+			if (componentId >= m_componentPools.size()) {
+				m_componentPools.resize(componentId + 1);
+			}
+			//todo: replace with custom assert
+			assert(componentId < m_componentPools.size() && "Component already registered!");
+			m_componentPools[componentId] = std::make_unique<Pool<TComponent>>();
+		}
+
+		template<typename TComponent>
+			requires std::derived_from<std::remove_cvref_t<TComponent>, BaseComponent<std::remove_cvref_t<TComponent>>>
+		void AddComponent(const Entity& entity, TComponent&& component) {
+			EmplaceComponent<TComponent>(entity, std::forward<TComponent>(component));
+		}
+
+		template<typename TComponent, typename... TArgs>
+			requires std::is_constructible_v<TComponent, TArgs...>
+					&& std::derived_from<TComponent, BaseComponent<TComponent>>
+		void EmplaceComponent(const Entity& entity, TArgs&&... args) {
+			auto pool = GetPool<TComponent>();
+			//todo: replace with custom assert
+			assert(pool && "The pool is not found!");
+			pool->Emplace(entity, std::forward<TArgs>(args)...);
+		}
+
+		template<typename TComponent>
+			requires std::derived_from<TComponent, BaseComponent<TComponent>>
+		void RemoveComponent(const Entity& entity) {
+			auto pool = GetPool<TComponent>();
+			//todo: replace with custom assert
+			assert(pool && "The pool is not found!");
+			pool->Remove(entity);
+		}
+
+		template<typename TComponent>
+			requires std::derived_from<TComponent, BaseComponent<TComponent>>
+		[[nodiscard]] bool HasComponent() const {
+			return GetPool<TComponent>();
+		}
+
+		template<typename TComponent>
+			requires std::derived_from<TComponent, BaseComponent<TComponent>>
+		[[nodiscard]] bool HasComponent(const Entity& entity) const {
+			auto pool = GetPool<TComponent>();
+			if (!pool) {
+				return false;
+			}
+			return pool->Has(entity);
+		}
+
+		template<typename TComponent>
+			requires std::derived_from<TComponent, BaseComponent<TComponent>>
+		[[nodiscard]] TComponent& GetComponent(const Entity& entity) {
+			auto pool = GetPool<TComponent>();
+			//todo: replace with custom assert
+			assert(pool && "Component pool is not registered!");
+			return pool->Get(entity);
+		}
+
+		template<typename TComponent>
+			requires std::derived_from<TComponent, BaseComponent<TComponent>>
+		[[nodiscard]] const TComponent& GetComponent(const Entity& entity) const {
+			auto pool = GetPool<TComponent>();
+			//todo: replace with custom assert
+			assert(pool && "Component is pool not registered!");
+			return pool->Get(entity);
+		}
+
+		void ClearComponents(const Entity& entity, const details::Signature& signature) const;
+
+	private:
+		template<typename TComponent>
+		Pool<TComponent>* GetPool() const {
+			const auto componentId = TComponent::GetTypeId();
+			if (componentId >= m_componentPools.size() || !m_componentPools[componentId]) {
+				return nullptr;
+			}
+			return static_cast<Pool<TComponent>*>(m_componentPools[componentId].get());
+		}
+
+		std::vector<std::unique_ptr<IPool>> m_componentPools;
+	};
+
 
 	class ISystem {
 	public:

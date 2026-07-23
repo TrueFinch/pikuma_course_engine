@@ -5,6 +5,8 @@ set(CMAKE_CXX_STANDARD 20)
 
 set(ENGINE_LIB engine)
 
+add_compile_definitions($<$<CONFIG:Debug>:_GLIBCXX_ASSERTIONS>)
+
 add_subdirectory("engine" engine)
 
 if (BUILD_DEMO)

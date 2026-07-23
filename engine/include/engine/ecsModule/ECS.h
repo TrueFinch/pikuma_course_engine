@@ -221,6 +221,10 @@ namespace pce {
 			return m_entities[index] == entity;
 		}
 
+		[[nodiscard]] const std::vector<Entity>& GetEntities() {
+			return m_entities;
+		}
+
 	private:
 		// components
 		std::vector<TComponent> m_components;
@@ -231,6 +235,8 @@ namespace pce {
 	};
 
 	class PoolManager final {
+		friend class Registry;
+
 	public:
 		template<typename TComponent>
 			requires std::derived_from<TComponent, BaseComponent<TComponent>>
@@ -351,6 +357,51 @@ namespace pce {
 		std::vector<CommandBuffer> m_commandBuffers;
 	};
 
+	template<typename... TComponents>
+	class EntityView final {
+	public:
+		explicit EntityView(Pool<TComponents>*... pools): m_pools(std::make_tuple(pools...)) {
+			size_t minSize = std::numeric_limits<size_t>::max();
+			auto inspectPool = [&minSize, this](auto* pool) {
+				if (pool && pool->GetEntities().size() < minSize) {
+					minSize = pool->GetEntities().size();
+					m_shortestEntities = &pool->GetEntities();
+				}
+			};
+			(inspectPool(std::get<Pool<TComponents>*>(m_pools)), ...);
+		}
+
+		template<typename Func>
+			requires std::is_invocable_v<Func, Entity, TComponents&...>
+					|| std::is_invocable_v<Func, TComponents&...>
+		void Each(Func&& func) {
+			if (!m_shortestEntities) {
+				return;
+			}
+			for (const Entity& entity: *m_shortestEntities) {
+				if (!HasAllComponents(entity)) {
+					continue;
+				}
+				if constexpr (std::is_invocable_v<Func, Entity, TComponents&...>) {
+					func(entity, std::get<Pool<TComponents>*>(m_pools)->Get(entity)...);
+				} else {
+					func(std::get<Pool<TComponents>*>(m_pools)->Get(entity)...);
+				}
+			}
+		}
+
+	private:
+		[[nodiscard]] bool HasAllComponents(const Entity& entity) const {
+			auto hasComponent = [](auto* pool, const Entity& entity) {
+				return pool && pool->Has(entity);
+			};
+			return (hasComponent(std::get<Pool<TComponents>*>(m_pools), entity) && ...);
+		}
+
+		std::tuple<Pool<TComponents>*...> m_pools;
+		const std::vector<Entity>* m_shortestEntities = nullptr;
+	};
+
 	class Registry final {
 	public:
 		~Registry() = default;
@@ -413,6 +464,11 @@ namespace pce {
 		}
 
 		void DestroyEntity(const Entity& entity);
+
+		template<typename... TComponents>
+		[[nodiscard]] auto View() const {
+			return EntityView<TComponents...>(m_poolManager.GetPool<TComponents>()...);
+		}
 
 	private:
 		EntityManager m_entityManager;

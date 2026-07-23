@@ -4,6 +4,8 @@
 
 #include "engine/ecsModule/ECS.h"
 
+#pragma region Entity
+
 pce::Entity pce::EntityManager::CreateEntity() {
 	uint32 freeIndex;
 	if (!m_freeList.empty()) {
@@ -44,6 +46,9 @@ const pce::details::Signature& pce::EntityManager::GetSignature(const Entity& en
 	return m_entityComponentSignatures[entity.GetIndex()];
 }
 
+#pragma endregion
+#pragma region Component
+
 void pce::PoolManager::ClearComponents(const Entity& entity, const details::Signature& signature) const {
 	for (auto i = 0; i < signature.size(); ++i) {
 		if (!signature.test(i)) {
@@ -54,6 +59,10 @@ void pce::PoolManager::ClearComponents(const Entity& entity, const details::Sign
 		}
 	}
 }
+
+#pragma endregion
+#pragma region System
+#pragma endregion
 
 size_t std::hash<pce::Entity>::operator()(const pce::Entity& entity) const noexcept {
 	return std::hash<pce::Entity::ValueType>{}(entity.m_value);

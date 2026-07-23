@@ -13,6 +13,8 @@
 #include "engine/utilsModule/Types.h"
 
 namespace pce {
+#pragma region Entity
+
 	namespace details {
 		constexpr uint32 MAX_COMPONENTS = 32;
 		using Signature = std::bitset<MAX_COMPONENTS>;
@@ -83,6 +85,8 @@ namespace pce {
 		std::vector<details::Signature> m_entityComponentSignatures;
 	};
 
+#pragma endregion
+#pragma region Component
 
 	namespace details {
 		using ComponentTypeId = uint32;
@@ -313,6 +317,8 @@ namespace pce {
 		std::vector<std::unique_ptr<IPool>> m_componentPools;
 	};
 
+#pragma endregion
+#pragma region System
 
 	class ISystem {
 	public:
@@ -322,6 +328,8 @@ namespace pce {
 
 		virtual void FixedUpdate(float dt) = 0;
 	};
+
+#pragma endregion
 }
 
 template<>

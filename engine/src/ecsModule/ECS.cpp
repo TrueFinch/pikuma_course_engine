@@ -65,8 +65,18 @@ void pce::PoolManager::ClearComponents(const Entity& entity, const details::Sign
 
 void pce::SystemManager::Update(Registry& registry, float dt) {
 	for (auto i = 0; i < m_systems.size(); ++i) {
-		m_systems[i]->Update(registry, dt);
+		m_systems[i]->Update(registry, m_commandBuffers[i], dt);
 	}
+
+	for (auto& buffer: m_commandBuffers) {
+		if (!buffer.Empty()) {
+			buffer.ProcessCommands(registry);
+		}
+	}
+}
+
+void pce::SystemManager::EmplaceBuffer() {
+	m_commandBuffers.emplace_back();
 }
 
 pce::Entity pce::Registry::CreateEntity() {
@@ -76,6 +86,32 @@ pce::Entity pce::Registry::CreateEntity() {
 void pce::Registry::DestroyEntity(const Entity& entity) {
 	m_poolManager.ClearComponents(entity, m_entityManager.GetSignature(entity));
 	m_entityManager.DestroyEntity(entity);
+}
+
+void pce::CommandBuffer::CreateEntity(std::function<void(Entity, Registry&)>&& callback) {
+	m_commands.emplace_back([setup = std::move(callback)](Registry& registry) {
+		const Entity entity = registry.CreateEntity();
+		if (setup) {
+			setup(entity, registry);
+		}
+	});
+}
+
+void pce::CommandBuffer::DestroyEntity(const Entity& entity) {
+	m_commands.emplace_back([entity](Registry& registry) {
+		registry.DestroyEntity(entity);
+	});
+}
+
+void pce::CommandBuffer::ProcessCommands(Registry& registry) {
+	for (auto& command: m_commands) {
+		command(registry);
+	}
+	m_commands.clear();
+}
+
+bool pce::CommandBuffer::Empty() const noexcept {
+	return m_commands.empty();
 }
 
 #pragma endregion

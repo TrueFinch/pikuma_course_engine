@@ -6,6 +6,7 @@
 
 #include <bitset>
 #include <cassert>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <vector>
@@ -13,7 +14,6 @@
 #include "engine/utilsModule/Types.h"
 
 namespace pce {
-	class Registry;
 #pragma region Entity
 
 	namespace details {
@@ -320,14 +320,16 @@ namespace pce {
 
 #pragma endregion
 #pragma region System
+	class Registry;
+	class CommandBuffer;
 
 	class ISystem {
 	public:
 		virtual ~ISystem() = default;
 
-		virtual void Update(Registry& registry, float dt) = 0;
+		virtual void Update(Registry& registry, CommandBuffer& commandBuffer, float dt) = 0;
 
-		virtual void FixedUpdate(Registry& registry, float dt) = 0;
+		virtual void FixedUpdate(Registry& registry, CommandBuffer& commandBuffer, float dt) = 0;
 	};
 
 	class SystemManager final {
@@ -337,12 +339,16 @@ namespace pce {
 					&& std::derived_from<TSystem, ISystem>
 		void EmplaceSystem(TArgs&&... args) {
 			m_systems.emplace_back(std::make_unique<TSystem>(std::forward<TArgs>(args)...));
+			EmplaceBuffer();
 		}
 
 		void Update(Registry& registry, float dt);
 
 	private:
+		void EmplaceBuffer();
+
 		std::vector<std::unique_ptr<ISystem>> m_systems;
+		std::vector<CommandBuffer> m_commandBuffers;
 	};
 
 	class Registry final {
@@ -411,6 +417,47 @@ namespace pce {
 	private:
 		EntityManager m_entityManager;
 		PoolManager m_poolManager;
+	};
+
+	class CommandBuffer final {
+	public:
+		CommandBuffer() = default;
+
+		CommandBuffer(const CommandBuffer&) = delete;
+
+		CommandBuffer& operator=(const CommandBuffer&) = delete;
+
+		CommandBuffer(CommandBuffer&&) = default;
+
+		CommandBuffer& operator=(CommandBuffer&&) = default;
+
+		void CreateEntity(std::function<void(Entity, Registry&)>&& callback);
+
+		template<typename TComponent, typename... TArgs>
+			requires std::is_constructible_v<TComponent, TArgs...>
+					&& std::derived_from<TComponent, BaseComponent<TComponent>>
+		void EmplaceComponent(const Entity& entity, TArgs&&... args) {
+			m_commands.emplace_back([entity, ...args = std::forward<TArgs>(args)](Registry& registry) {
+				registry.EmplaceComponent<TComponent>(entity, std::forward<TArgs>(args)...);
+			});
+		}
+
+		template<typename TComponent>
+			requires std::derived_from<TComponent, BaseComponent<TComponent>>
+		void RemoveComponent(const Entity& entity) {
+			m_commands.emplace_back([entity](Registry& registry) {
+				registry.RemoveComponent<TComponent>(entity);
+			});
+		}
+
+		void DestroyEntity(const Entity& entity);
+
+		void ProcessCommands(Registry& registry);
+
+		[[nodiscard]] bool Empty() const noexcept;
+
+	private:
+		std::vector<std::function<void(Registry&)>> m_commands;
 	};
 
 #pragma endregion

@@ -6,10 +6,12 @@
 
 #include <bitset>
 #include <cassert>
+#include <format>
 #include <functional>
 #include <limits>
 #include <memory>
 #include <vector>
+#include <fmt/base.h>
 
 #include "engine/utilsModule/Types.h"
 
@@ -522,4 +524,20 @@ namespace pce {
 template<>
 struct std::hash<pce::Entity> {
 	size_t operator()(const pce::Entity& entity) const noexcept;
+};
+
+template<>
+struct fmt::formatter<pce::Entity> {
+	static constexpr auto parse(const format_parse_context& ctx) {
+		return ctx.begin();
+	}
+
+	static auto format(const pce::Entity& entity, format_context& ctx) {
+		return format_to(
+			ctx.out(),
+			"Entity[Index: {}, Gen: {}]",
+			entity.GetIndex(),
+			entity.GetGeneration()
+		);
+	}
 };

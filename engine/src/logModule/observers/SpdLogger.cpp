@@ -2,7 +2,7 @@
 // Created by Vladimir Glushkov on 08.01.2025.
 //
 
-#include "SpdLogger.h"
+#include "engine/logModule/SpdLogger.h"
 
 #include <memory>
 #include <spdlog/spdlog.h>

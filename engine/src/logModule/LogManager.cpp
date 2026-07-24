@@ -16,7 +16,7 @@ std::unique_ptr<LogManager> LogManager::Create() {
 }
 
 void LogManager::Log(eLogLevel lvl, const std::string_view msg) const {
-	for (const auto &obs : m_observers) {
+	for (const auto &obs: m_observers) {
 		obs->OnLog(lvl, msg);
 	}
 }

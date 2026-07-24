@@ -6,6 +6,7 @@
 #include <memory>
 #include <SDL2/SDL.h>
 
+#include "engine/ecsModule/ECS.h"
 #include "engine/utilsModule/Types.h"
 
 namespace pce {
@@ -20,6 +21,10 @@ namespace pce {
 		void Run();
 
 		void Destroy();
+
+		Registry& GetRegistry();
+
+		SystemManager& GetSystemManager();
 
 	private:
 		void ProcessInput();
@@ -38,5 +43,8 @@ namespace pce {
 
 		std::unique_ptr<SDL_Window, decltype(&SDL_DestroyWindow)> m_window;
 		std::unique_ptr<SDL_Renderer, decltype(&SDL_DestroyRenderer)> m_renderer;
+
+		Registry m_registry;
+		SystemManager m_systemManager;
 	};
 }

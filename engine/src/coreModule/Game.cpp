@@ -10,7 +10,9 @@
 #include "engine/logModule/LogManager.h"
 #include "engine/logModule/LogManagerInstance.h"
 #include "engine/utilsModule/Types.h"
-#include "logModule/observers/SpdLogger.h"
+#include "engine/logModule/SpdLogger.h"
+#include "engine/ecsModule/ECS.h"
+#include "engine/ecsModule/components/TransformComponent.h"
 
 pce::Game::Game()
 	: m_window(nullptr, SDL_DestroyWindow)
@@ -69,6 +71,14 @@ void pce::Game::Destroy() {
 	SDL_Quit();
 }
 
+pce::Registry& pce::Game::GetRegistry() {
+	return m_registry;
+}
+
+pce::SystemManager& pce::Game::GetSystemManager() {
+	return m_systemManager;
+}
+
 void pce::Game::ProcessInput() {
 	SDL_Event sdlEvent;
 	while (SDL_PollEvent(&sdlEvent)) {
@@ -98,7 +108,8 @@ void pce::Game::Delay() {
 void pce::Game::Update() {
 	m_deltaTime = static_cast<float>(SDL_GetTicks() - m_prevFrameMillis) / 1000.f;
 	m_prevFrameMillis = SDL_GetTicks();
-	//TODO: update game systems
+
+	m_systemManager.Update(m_registry, m_deltaTime);
 }
 
 void pce::Game::Render() {

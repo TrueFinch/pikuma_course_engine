@@ -3,12 +3,14 @@ project(${DEMO_TARGET} LANGUAGES CXX)
 
 # header files
 set(DEMO_HEADERS
+		src/ecsModule/systems/MovementSystem.h
 
 )
 
 # source files
 set(DEMO_SOURCES
 		src/main.cpp
+		src/ecsModule/systems/MovementSystem.cpp
 )
 
 add_executable(${DEMO_TARGET} ${DEMO_HEADERS} ${DEMO_SOURCES})

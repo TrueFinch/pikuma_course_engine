@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.30)
 
 add_executable(engine_tests
+		ecs_tests.cpp
 )
 
 target_link_libraries(engine_tests

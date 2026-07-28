@@ -1,9 +1,6 @@
 cmake_minimum_required(VERSION 3.30)
 project(Engine LANGUAGES CXX)
 
-# Build options
-option(ENGINE_BUILD_TESTS "Build tests for Engine" OFF)
-
 add_library(${ENGINE_LIB} SHARED)
 set_target_properties(${ENGINE_LIB}
 		PROPERTIES
@@ -69,7 +66,7 @@ target_include_directories(${ENGINE_LIB}
 
 target_link_libraries(${ENGINE_LIB}
 		PUBLIC
-		$<TARGET_NAME_IF_EXISTS:SDL2::SDL2main> $<IF:$<TARGET_EXISTS:SDL2::SDL2>,SDL2::SDL2,SDL2::SDL2-static>
+		$<IF:$<TARGET_EXISTS:SDL2::SDL2>,SDL2::SDL2,SDL2::SDL2-static>
 
 		PUBLIC
 		$<IF:$<TARGET_EXISTS:SDL2_image::SDL2_image>,SDL2_image::SDL2_image,SDL2_image::SDL2_image-static>
@@ -93,4 +90,8 @@ if (BUILD_DEMO)
 			$<TARGET_FILE_DIR:demo>
 			COMMENT "Copying shared library to demo target directory"
 	)
+endif ()
+
+if (BUILD_ENGINE_TESTS)
+	add_subdirectory(tests)
 endif ()

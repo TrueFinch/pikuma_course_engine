@@ -117,13 +117,12 @@ TEST_CASE("EntityManager Lifetime & Reuse Order", "[EntityManager]") {
 		REQUIRE(manager.IsAlive(e2)); // e2 stays unused during test
 	}
 
-	// todo: standart assert is not suitable for this test. Need custom assert
-	// SECTION("Double destroy entity") {
-	// 	auto e1 = manager.CreateEntity();
-	// 	manager.DestroyEntity(e1);
-	// 	manager.DestroyEntity(e1);
-	// 	REQUIRE_FALSE(manager.IsAlive(e1));
-	// }
+	SECTION("Double destroy entity throws AssertionException") {
+		auto e1 = manager.CreateEntity();
+		manager.DestroyEntity(e1);
+		REQUIRE_THROWS_AS(manager.DestroyEntity(e1), pce::AssertionException);
+		REQUIRE_FALSE(manager.IsAlive(e1));
+	}
 }
 
 TEST_CASE("EntityManager Signatures", "[EntityManager][Signature]") {

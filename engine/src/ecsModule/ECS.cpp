@@ -21,6 +21,7 @@ pce::Entity pce::EntityManager::CreateEntity() {
 }
 
 void pce::EntityManager::DestroyEntity(const Entity& entity) {
+	PCE_ASSERT(IsAlive(entity), "Entity is not alive!");
 	const auto index = entity.GetIndex();
 	m_freeList.push_back(index);
 	++m_generations[index];
@@ -28,10 +29,12 @@ void pce::EntityManager::DestroyEntity(const Entity& entity) {
 }
 
 void pce::EntityManager::SetSignature(const Entity& entity, const details::Signature& signature) {
+	PCE_ASSERT(IsAlive(entity), "Entity is not alive!");
 	m_entityComponentSignatures[entity.GetIndex()] = signature;
 }
 
 pce::details::Signature& pce::EntityManager::GetSignature(const Entity& entity) {
+	PCE_ASSERT(IsAlive(entity), "Entity is not alive!");
 	return m_entityComponentSignatures[entity.GetIndex()];
 }
 
@@ -43,6 +46,7 @@ bool pce::EntityManager::IsAlive(const Entity& entity) const {
 }
 
 const pce::details::Signature& pce::EntityManager::GetSignature(const Entity& entity) const {
+	PCE_ASSERT(IsAlive(entity), "Entity is not alive!");
 	return m_entityComponentSignatures[entity.GetIndex()];
 }
 
@@ -84,6 +88,7 @@ pce::Entity pce::Registry::CreateEntity() {
 }
 
 void pce::Registry::DestroyEntity(const Entity& entity) {
+	PCE_ASSERT(m_entityManager.IsAlive(entity), "Entity is not alive!");
 	m_poolManager.ClearComponents(entity, m_entityManager.GetSignature(entity));
 	m_entityManager.DestroyEntity(entity);
 }

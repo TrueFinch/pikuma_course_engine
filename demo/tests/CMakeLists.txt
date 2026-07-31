@@ -11,6 +11,8 @@ target_link_libraries(demo_tests
 )
 
 target_compile_features(demo_tests PRIVATE cxx_std_20)
+target_compile_definitions(demo_tests PRIVATE PCE_TESTING)
+
 
 include(Catch)
 catch_discover_tests(demo_tests)

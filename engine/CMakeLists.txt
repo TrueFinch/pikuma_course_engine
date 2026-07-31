@@ -27,6 +27,7 @@ set(ENGINE_HEADERS
 		include/engine/ecsModule/ECS.h
 
 		include/engine/utilsModule/GlmFormat.h
+		include/engine/utilsModule/Assert.h
 )
 
 # source files

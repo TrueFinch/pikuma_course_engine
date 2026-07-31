@@ -5,14 +5,15 @@
 #pragma once
 
 #include <bitset>
-#include <cassert>
 #include <format>
+
 #include <functional>
 #include <limits>
 #include <memory>
 #include <vector>
 #include <fmt/base.h>
 
+#include "engine/utilsModule/Assert.h"
 #include "engine/utilsModule/Types.h"
 
 namespace pce {
@@ -157,8 +158,7 @@ namespace pce {
 		template<typename... TArgs>
 			requires std::is_constructible_v<TComponent, TArgs...>
 		void Emplace(const Entity& entity, TArgs&&... args) {
-			//todo: replace with custom assert
-			assert(!Has(entity) && "Component already exists!");
+			PCE_ASSERT(!Has(entity), "Component already exists on entity!");
 			const auto entityIndex = entity.GetIndex();
 			if (entityIndex >= m_entityToIndex.size()) {
 				// resize m_entityToIndex to handle new entity
@@ -171,16 +171,14 @@ namespace pce {
 		}
 
 		void Set(const Entity& entity, TComponent&& component) {
-			//todo: replace with custom assert
-			assert(Has(entity) && "Entity is not found!");
+			PCE_ASSERT(Has(entity), "Component not found on entity!");
 			const auto entityIndex = entity.GetIndex();
 			const auto index = m_entityToIndex[entityIndex];
 			m_components[index] = std::move(component);
 		}
 
 		void Remove(const Entity& entity) override {
-			//todo: replace with custom assert
-			assert(Has(entity) && "Entity is not found!");
+			PCE_ASSERT(Has(entity), "Component not found on entity!");
 			const auto entityIndex = entity.GetIndex();
 			const auto index = m_entityToIndex[entityIndex];
 			const auto lastIndex = m_components.size() - 1;
@@ -197,14 +195,12 @@ namespace pce {
 		}
 
 		[[nodiscard]] TComponent& Get(const Entity& entity) {
-			//todo: replace with custom assert
-			assert(Has(entity) && "Entity is not found!");
+			PCE_ASSERT(Has(entity), "Component not found on entity!");
 			return m_components[m_entityToIndex[entity.GetIndex()]];
 		}
 
 		[[nodiscard]] const TComponent& Get(const Entity& entity) const {
-			//todo: replace with custom assert
-			assert(Has(entity));
+			PCE_ASSERT(Has(entity), "Component not found on entity!");
 			return m_components[m_entityToIndex[entity.GetIndex()]];
 		}
 
@@ -247,8 +243,7 @@ namespace pce {
 			if (componentId >= m_componentPools.size()) {
 				m_componentPools.resize(componentId + 1);
 			}
-			//todo: replace with custom assert
-			assert(componentId < m_componentPools.size() && "Component already registered!");
+			PCE_ASSERT(!m_componentPools[componentId], "Component already registered!");
 			m_componentPools[componentId] = std::make_unique<Pool<TComponent>>();
 		}
 
@@ -263,8 +258,7 @@ namespace pce {
 					&& std::derived_from<TComponent, BaseComponent<TComponent>>
 		void EmplaceComponent(const Entity& entity, TArgs&&... args) {
 			auto pool = GetPool<TComponent>();
-			//todo: replace with custom assert
-			assert(pool && "The pool is not found!");
+			PCE_ASSERT(pool, "Component pool is not registered!");
 			pool->Emplace(entity, std::forward<TArgs>(args)...);
 		}
 
@@ -272,8 +266,7 @@ namespace pce {
 			requires std::derived_from<TComponent, BaseComponent<TComponent>>
 		void RemoveComponent(const Entity& entity) {
 			auto pool = GetPool<TComponent>();
-			//todo: replace with custom assert
-			assert(pool && "The pool is not found!");
+			PCE_ASSERT(pool, "Component pool is not registered!");
 			pool->Remove(entity);
 		}
 
@@ -297,8 +290,7 @@ namespace pce {
 			requires std::derived_from<TComponent, BaseComponent<TComponent>>
 		[[nodiscard]] TComponent& GetComponent(const Entity& entity) {
 			auto pool = GetPool<TComponent>();
-			//todo: replace with custom assert
-			assert(pool && "Component pool is not registered!");
+			PCE_ASSERT(pool, "Component pool is not registered!");
 			return pool->Get(entity);
 		}
 
@@ -306,8 +298,7 @@ namespace pce {
 			requires std::derived_from<TComponent, BaseComponent<TComponent>>
 		[[nodiscard]] const TComponent& GetComponent(const Entity& entity) const {
 			auto pool = GetPool<TComponent>();
-			//todo: replace with custom assert
-			assert(pool && "Component is pool not registered!");
+			PCE_ASSERT(pool, "Component pool is not registered!");
 			return pool->Get(entity);
 		}
 
@@ -413,8 +404,7 @@ namespace pce {
 		template<typename TComponent>
 			requires std::derived_from<TComponent, BaseComponent<TComponent>>
 		void RegisterComponent() {
-			//todo: replace with custom assert
-			assert(!m_poolManager.HasComponent<TComponent>());
+			PCE_ASSERT(!m_poolManager.HasComponent<TComponent>(), "Component already registered!");
 			m_poolManager.RegisterComponent<TComponent>();
 		}
 
@@ -428,8 +418,7 @@ namespace pce {
 			requires std::is_constructible_v<TComponent, TArgs...>
 					&& std::derived_from<TComponent, BaseComponent<TComponent>>
 		void EmplaceComponent(const Entity& entity, TArgs&&... args) {
-			//todo: replace with custom assert
-			assert(!m_poolManager.HasComponent<TComponent>(entity));
+			PCE_ASSERT(!HasComponent<TComponent>(entity), "Component already exists on entity!");
 			m_poolManager.EmplaceComponent<TComponent>(entity, std::forward<TArgs>(args)...);
 			const auto componentId = TComponent::GetTypeId();
 			m_entityManager.GetSignature(entity).set(componentId);
@@ -438,8 +427,7 @@ namespace pce {
 		template<typename TComponent>
 			requires std::derived_from<TComponent, BaseComponent<TComponent>>
 		void RemoveComponent(const Entity& entity) {
-			//todo: replace with custom assert
-			assert(m_poolManager.HasComponent<TComponent>(entity));
+			PCE_ASSERT(HasComponent<TComponent>(entity), "Component does not exist on entity!");
 			m_poolManager.RemoveComponent<TComponent>(entity);
 			const auto componentId = TComponent::GetTypeId();
 			m_entityManager.GetSignature(entity).reset(componentId);
@@ -449,6 +437,7 @@ namespace pce {
 		template<typename TComponent>
 			requires std::derived_from<TComponent, BaseComponent<TComponent>>
 		[[nodiscard]] bool HasComponent(const Entity& entity) const {
+			PCE_ASSERT(m_entityManager.IsAlive(entity), "Entity is not alive!");
 			return m_poolManager.HasComponent<TComponent>(entity);
 		}
 
@@ -456,12 +445,14 @@ namespace pce {
 		template<typename TComponent>
 			requires std::derived_from<TComponent, BaseComponent<TComponent>>
 		TComponent& GetComponent(const Entity& entity) {
+			PCE_ASSERT(m_entityManager.IsAlive(entity), "Entity is not alive!");
 			return m_poolManager.GetComponent<TComponent>(entity);
 		}
 
 		template<typename TComponent>
 			requires std::derived_from<TComponent, BaseComponent<TComponent>>
 		const TComponent& GetComponent(const Entity& entity) const {
+			PCE_ASSERT(m_entityManager.IsAlive(entity), "Entity is not alive!");
 			return m_poolManager.GetComponent<TComponent>(entity);
 		}
 

@@ -202,6 +202,25 @@ struct TestComponent2 final: pce::BaseComponent<TestComponent2> {
 	explicit TestComponent2(float floatData): floatData(floatData) {}
 };
 
+struct MoveOnlyComponent final: pce::BaseComponent<MoveOnlyComponent> {
+	[[maybe_unused]] static constexpr std::string_view COMPONENT_NAME = "MoveOnlyComponent";
+
+	std::unique_ptr<int> value;
+
+	explicit MoveOnlyComponent(int v): value(std::make_unique<int>(v)) {}
+
+	MoveOnlyComponent(const MoveOnlyComponent&) = delete;
+
+	MoveOnlyComponent& operator=(const MoveOnlyComponent&) = delete;
+
+	MoveOnlyComponent(MoveOnlyComponent&&) noexcept = default;
+
+	MoveOnlyComponent& operator=(MoveOnlyComponent&&) noexcept = default;
+};
+
+static_assert(!std::is_copy_constructible_v<MoveOnlyComponent>);
+static_assert(std::is_move_constructible_v<MoveOnlyComponent>);
+
 TEST_CASE("Component Pool", "[Pool]") {
 	SECTION("Distinct components have distinct ids and names") {
 		// create test components
@@ -363,6 +382,65 @@ TEST_CASE("Component Pool", "[Pool]") {
 		pool->Clear();
 		REQUIRE(pool->GetEntities().empty());
 		REQUIRE(pool->Empty());
+	}
+
+	SECTION("Sparse entity indices") {
+		auto pool = std::make_unique<pce::Pool<TestComponent1>>();
+		auto entityManager = pce::EntityManager();
+		constexpr int N = 1000;
+		std::vector<pce::Entity> entities;
+		entities.reserve(N);
+		for (int i = 0; i < N; ++i) {
+			entities.push_back(entityManager.CreateEntity());
+		}
+
+		pool->Emplace(entities.front(), 0); // index 0
+		pool->Emplace(entities[N / 2], 500); // index 500
+		pool->Emplace(entities.back(), 999); // index 999
+
+		// holes in 'm_entityToIndex' report no component
+		REQUIRE_FALSE(pool->Has(entities[1]));
+		REQUIRE_THROWS_AS(pool->Get(entities[1]), pce::AssertionException);
+
+		REQUIRE(pool->GetEntities() == std::vector<pce::Entity>{entities[0], entities[500], entities[999]});
+
+		// removing a middle sparse entry swaps the last one into the hole
+		pool->Remove(entities[500]);
+		REQUIRE_FALSE(pool->Has(entities[500]));
+		REQUIRE(pool->Has(entities[999]));
+		REQUIRE(pool->Get(entities[999]).uintData == 999);
+		REQUIRE(pool->GetEntities() == std::vector<pce::Entity>{entities[0], entities[999]});
+	}
+
+	SECTION("Stress test: many move-only components with removals") {
+		constexpr int N = 10'000;
+		auto pool = std::make_unique<pce::Pool<MoveOnlyComponent>>();
+		auto entityManager = pce::EntityManager();
+
+		std::vector<pce::Entity> entities;
+		entities.reserve(N);
+		for (int i = 0; i < N; ++i) {
+			entities.push_back(entityManager.CreateEntity());
+			pool->Emplace(entities.back(), i);
+		}
+
+		// all components are present and hold correct data
+		for (int i = 0; i < N; ++i) {
+			REQUIRE(pool->Has(entities[i]));
+			REQUIRE(*pool->Get(entities[i]).value == i);
+		}
+
+		// removing every second component drives the swap-with-last path
+		for (int i = 0; i < N; i += 2) {
+			pool->Remove(entities[i]);
+		}
+
+		// survivors keep intact data after many moves
+		for (int i = 1; i < N; i += 2) {
+			REQUIRE(pool->Has(entities[i]));
+			REQUIRE(*pool->Get(entities[i]).value == i);
+		}
+		REQUIRE(pool->GetEntities().size() == N / 2);
 	}
 
 	SECTION("Clear empty pool") {
@@ -589,6 +667,30 @@ TEST_CASE("PoolManager") {
 		REQUIRE_FALSE(poolManager.HasComponent<TestComponent2>(e1));
 	}
 
+	SECTION("Move-only components via PoolManager") {
+		auto entityManager = pce::EntityManager();
+		auto poolManager = pce::PoolManager();
+		poolManager.RegisterComponent<MoveOnlyComponent>();
+		auto e1 = entityManager.CreateEntity();
+		auto e2 = entityManager.CreateEntity();
+
+		poolManager.EmplaceComponent<MoveOnlyComponent>(e1, 10);
+		poolManager.AddComponent(e2, MoveOnlyComponent(20));
+
+		REQUIRE(poolManager.HasComponent<MoveOnlyComponent>(e1));
+		REQUIRE(poolManager.HasComponent<MoveOnlyComponent>(e2));
+		REQUIRE(*poolManager.GetComponent<MoveOnlyComponent>(e1).value == 10);
+		REQUIRE(*poolManager.GetComponent<MoveOnlyComponent>(e2).value == 20);
+
+		poolManager.RemoveComponent<MoveOnlyComponent>(e1);
+		REQUIRE_FALSE(poolManager.HasComponent<MoveOnlyComponent>(e1));
+
+		auto sig = pce::details::Signature{};
+		sig.set(MoveOnlyComponent::GetTypeId());
+		poolManager.ClearComponents(e2, sig);
+		REQUIRE_FALSE(poolManager.HasComponent<MoveOnlyComponent>(e2));
+	}
+
 	SECTION("Try remove component from unregistered pool") {
 		auto entityManager = pce::EntityManager();
 		auto e1 = entityManager.CreateEntity();
@@ -614,5 +716,39 @@ TEST_CASE("PoolManager") {
 		sig.set(TestComponent1::GetTypeId());
 		sig.set(TestComponent2::GetTypeId());
 		REQUIRE_THROWS_AS(poolManager.ClearComponents(e1, sig), pce::AssertionException);
+	}
+}
+
+TEST_CASE("Pool Stress", "[Pool][Stress]") {
+	SECTION("Sparse indices with move-only components") {
+		constexpr int N = 100'000;
+		auto pool = std::make_unique<pce::Pool<MoveOnlyComponent>>();
+		auto entityManager = pce::EntityManager();
+
+		std::vector<pce::Entity> entities;
+		entities.reserve(N);
+		for (int i = 0; i < N; ++i) {
+			entities.push_back(entityManager.CreateEntity());
+		}
+
+		// component on every 100th index -> 'm_entityToIndex' resizes with holes
+		for (int i = 0; i < N; i += 100) {
+			pool->Emplace(entities[i], i);
+		}
+
+		// dense holes report no component
+		REQUIRE_FALSE(pool->Has(entities[1]));
+		REQUIRE(pool->GetEntities().size() == N / 100);
+
+		// remove half of the sparse components
+		for (int i = 0; i < N; i += 200) {
+			pool->Remove(entities[i]);
+		}
+
+		// the other half survived with intact data
+		for (int i = 100; i < N; i += 200) {
+			REQUIRE(pool->Has(entities[i]));
+			REQUIRE(*pool->Get(entities[i]).value == i);
+		}
 	}
 }

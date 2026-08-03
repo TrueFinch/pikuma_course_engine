@@ -58,9 +58,9 @@ void pce::PoolManager::ClearComponents(const Entity& entity, const details::Sign
 		if (!signature.test(i)) {
 			continue;
 		}
-		if (i < m_componentPools.size() && m_componentPools[i]) {
-			m_componentPools[i]->Remove(entity);
-		}
+		auto pool = GetPool(i);
+		PCE_ASSERT(pool, "Component pool is not registered!");
+		pool->Remove(entity);
 	}
 }
 

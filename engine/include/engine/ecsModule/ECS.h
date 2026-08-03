@@ -98,16 +98,14 @@ namespace pce {
 	}
 
 	template<typename Derived>
-	class BaseComponent {
+	struct BaseComponent {
 	protected:
 		~BaseComponent() = default;
 
 		static inline details::ComponentTypeId id = details::ComponentLastId++;
 
 	public:
-		using ComponentTypeId = std::size_t;
-
-		[[nodiscard]] static ComponentTypeId GetTypeId() noexcept {
+		[[nodiscard]] static details::ComponentTypeId GetTypeId() noexcept {
 			return id;
 		}
 
@@ -121,6 +119,8 @@ namespace pce {
 		virtual ~IPool() = default;
 
 		virtual void Remove(const Entity& entity) = 0;
+
+		virtual bool Has(const Entity& entity) const = 0;
 	};
 
 	template<typename TComponent>
@@ -191,6 +191,7 @@ namespace pce {
 				m_entityToIndex[lastEntity.GetIndex()] = index;
 			}
 			m_entityToIndex[entityIndex] = INVALID_INDEX;
+			m_entities.pop_back();
 			m_components.pop_back();
 		}
 
@@ -204,7 +205,7 @@ namespace pce {
 			return m_components[m_entityToIndex[entity.GetIndex()]];
 		}
 
-		[[nodiscard]] bool Has(const Entity& entity) const {
+		[[nodiscard]] bool Has(const Entity& entity) const override {
 			const auto entityIndex = entity.GetIndex();
 			if (entityIndex >= m_entityToIndex.size()) {
 				// no element in 'm_entityToIndex' for the given entity
@@ -312,6 +313,13 @@ namespace pce {
 				return nullptr;
 			}
 			return static_cast<Pool<TComponent>*>(m_componentPools[componentId].get());
+		}
+
+		IPool* GetPool(details::ComponentTypeId componentId) const {
+			if (componentId >= m_componentPools.size() || !m_componentPools[componentId]) {
+				return nullptr;
+			}
+			return m_componentPools[componentId].get();
 		}
 
 		std::vector<std::unique_ptr<IPool>> m_componentPools;

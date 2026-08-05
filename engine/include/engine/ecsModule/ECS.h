@@ -364,7 +364,8 @@ namespace pce {
 		explicit EntityView(Pool<TComponents>*... pools): m_pools(std::make_tuple(pools...)) {
 			size_t minSize = std::numeric_limits<size_t>::max();
 			auto inspectPool = [&minSize, this](auto* pool) {
-				if (pool && pool->GetEntities().size() < minSize) {
+				PCE_ASSERT(pool, "Component pool is not registered!");
+				if (pool->GetEntities().size() < minSize) {
 					minSize = pool->GetEntities().size();
 					m_shortestEntities = &pool->GetEntities();
 				}
@@ -376,9 +377,6 @@ namespace pce {
 			requires std::is_invocable_v<Func, Entity, TComponents&...>
 					|| std::is_invocable_v<Func, TComponents&...>
 		void Each(Func&& func) {
-			if (!m_shortestEntities) {
-				return;
-			}
 			for (const Entity& entity: *m_shortestEntities) {
 				if (!HasAllComponents(entity)) {
 					continue;
@@ -394,7 +392,7 @@ namespace pce {
 	private:
 		[[nodiscard]] bool HasAllComponents(const Entity& entity) const {
 			auto hasComponent = [](auto* pool, const Entity& entity) {
-				return pool && pool->Has(entity);
+				return pool->Has(entity);
 			};
 			return (hasComponent(std::get<Pool<TComponents>*>(m_pools), entity) && ...);
 		}

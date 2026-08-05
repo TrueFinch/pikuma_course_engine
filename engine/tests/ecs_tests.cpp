@@ -2,9 +2,10 @@
 // Created by Vladimir on 26.07.2026.
 //
 
-#include <catch2/catch_test_macros.hpp>
+#include <array>
+#include <ranges>
 #include <unordered_map>
-#include <unordered_set>
+#include <catch2/catch_test_macros.hpp>
 
 #include "engine/ecsModule/ECS.h"
 
@@ -193,6 +194,10 @@ struct TestComponent1 final: pce::BaseComponent<TestComponent1> {
 	uint32 uintData;
 
 	explicit TestComponent1(uint32 uintData): uintData(uintData) {}
+
+	bool operator==(const TestComponent1& other) const {
+		return uintData == other.uintData;
+	}
 };
 
 struct TestComponent2 final: pce::BaseComponent<TestComponent2> {
@@ -750,5 +755,231 @@ TEST_CASE("Pool Stress", "[Pool][Stress]") {
 			REQUIRE(pool->Has(entities[i]));
 			REQUIRE(*pool->Get(entities[i]).value == i);
 		}
+	}
+}
+
+TEST_CASE("EntityView", "[EntityView]") {
+	SECTION("Empty view is not allowed") {
+		pce::Pool<TestComponent1>* testComponent1Pool = nullptr;
+		// pools not allowed to be null
+		REQUIRE_THROWS_AS(pce::EntityView(testComponent1Pool), pce::AssertionException);
+		pce::Pool<TestComponent2> testComponent2Pool;
+		REQUIRE_THROWS_AS(pce::EntityView(&testComponent2Pool, testComponent1Pool), pce::AssertionException);
+	}
+	SECTION("Process only entities with the given component") {
+		// prepare data
+		pce::Pool<TestComponent1> pool;
+		auto entityManager = pce::EntityManager();
+		constexpr int N = 100;
+		std::vector<pce::Entity> entities;
+		entities.reserve(N);
+		for (auto i = 0; i < N; ++i) {
+			entities.push_back(entityManager.CreateEntity());
+			if (i % 2 == 0) {
+				pool.Emplace(entities[i], i);
+			}
+		}
+		// process only entities with TestComponent1
+		auto view = pce::EntityView(&pool);
+		std::array<bool, N> processedEntities;
+		processedEntities.fill(false);
+		view.Each([&processedEntities](pce::Entity entity, TestComponent1& component) {
+			processedEntities[entity.GetIndex()] = true;
+			component.uintData += 1;
+		});
+		// entities with TestComponent1 are expected to be processed
+		// and all uintData fields are expected to be increased
+		for (auto i = 0; i < N; ++i) {
+			if (i % 2 == 0) {
+				REQUIRE(processedEntities[i] == true);
+				REQUIRE(pool.Has(entities[i]));
+				REQUIRE(pool.Get(entities[i]).uintData == i + 1);
+			} else {
+				REQUIRE_FALSE(processedEntities[i]);
+			}
+		}
+	}
+	SECTION("Process entities only with all components") {
+		// prepare data
+		pce::Pool<TestComponent1> pool1;
+		pce::Pool<TestComponent2> pool2;
+		auto entityManager = pce::EntityManager();
+		constexpr int N = 100;
+		std::vector<pce::Entity> entities;
+		entities.reserve(N);
+		for (auto i = 0; i < N; ++i) {
+			entities.push_back(entityManager.CreateEntity());
+			if (i % 2 == 0 && i % 3 == 0) {
+				pool1.Emplace(entities[i], i);
+				pool2.Emplace(entities[i], static_cast<float>(i));
+			} else if (i % 2 == 0) {
+				pool1.Emplace(entities[i], i);
+			} else if (i % 2 == 1) {
+				pool2.Emplace(entities[i], static_cast<float>(i));
+			}
+		}
+		// process only entities with TestComponent1
+		auto view = pce::EntityView(&pool1, &pool2);
+		std::array<bool, N> processedEntities;
+		processedEntities.fill(false);
+		view.Each([&processedEntities](pce::Entity entity, TestComponent1& component1, TestComponent2& component2) {
+			processedEntities[entity.GetIndex()] = true;
+		});
+		// entities with both TestComponent1 and TestComponent2 are expected to be processed
+		for (auto i = 0; i < N; ++i) {
+			if (i % 2 == 0 && i % 3 == 0) {
+				REQUIRE(processedEntities[entities[i].GetIndex()]);
+			} else {
+				REQUIRE_FALSE(processedEntities[entities[i].GetIndex()]);
+			}
+		}
+	}
+	SECTION("The view is empty on disjoint pools") {
+		// prepare data
+		pce::Pool<TestComponent1> pool1;
+		pce::Pool<TestComponent2> pool2;
+		auto entityManager = pce::EntityManager();
+		constexpr int N = 100;
+		std::vector<pce::Entity> entities;
+		entities.reserve(N);
+		for (auto i = 0; i < N; ++i) {
+			entities.push_back(entityManager.CreateEntity());
+			if (i % 2 == 0) {
+				pool1.Emplace(entities[i], i);
+			} else {
+				pool2.Emplace(entities[i], static_cast<float>(i));
+			}
+		}
+		// create view on disjoint pools
+		auto view = pce::EntityView(&pool1, &pool2);
+		std::vector<pce::Entity> processedEntities;
+		view.Each([&processedEntities](pce::Entity entity, TestComponent1& component1, TestComponent2& component2) {
+			processedEntities.push_back(entity);
+		});
+		// no entities have both TestComponent1 and TestComponent2
+		REQUIRE(processedEntities.empty());
+	}
+	SECTION("Changing order of components can affect iteration order") {
+		// prepare data
+		pce::Pool<TestComponent1> pool1;
+		pce::Pool<TestComponent2> pool2;
+		auto entityManager = pce::EntityManager();
+		constexpr int N = 100;
+		std::vector<pce::Entity> entities;
+		entities.reserve(N);
+		for (auto i = 0; i < N; ++i) {
+			entities.push_back(entityManager.CreateEntity());
+			pool1.Emplace(entities[i], i);
+		}
+		for (auto entity: entities | std::views::reverse) {
+			pool2.Emplace(entity, static_cast<float>(entity.GetIndex()));
+		}
+		// create two view and reverse order of pools of components
+		std::vector<pce::Entity> processedEntities;
+		pce::EntityView(&pool1, &pool2).Each(
+			[&processedEntities](pce::Entity entity, TestComponent1&, TestComponent2&) {
+				processedEntities.push_back(entity);
+			});
+		std::vector<pce::Entity> processedEntitiesReverse;
+		pce::EntityView(&pool2, &pool1).Each(
+			[&processedEntitiesReverse](pce::Entity entity, TestComponent2&, TestComponent1&) {
+				processedEntitiesReverse.push_back(entity);
+			});
+		// check that the iteration order is reversed
+		for (auto i = 0; i < N; ++i) {
+			REQUIRE(processedEntities[i] == processedEntitiesReverse[N - i - 1]);
+		}
+	}
+	SECTION("Both signatures of each iterates in identical order") {
+		// prepare data
+		pce::Pool<TestComponent1> pool;
+		auto entityManager = pce::EntityManager();
+		constexpr int N = 100;
+		std::vector<pce::Entity> entities;
+		entities.reserve(N);
+		for (auto i = 0; i < N; ++i) {
+			entities.push_back(entityManager.CreateEntity());
+			pool.Emplace(entities[i], i);
+		}
+		// create view and iterate with different overloads of 'Each' method
+		auto view = pce::EntityView(&pool);
+		std::vector<TestComponent1> processedComponents1;
+		view.Each([&processedComponents1](pce::Entity entity, TestComponent1& component1) {
+			processedComponents1.push_back(component1);
+		});
+		std::vector<TestComponent1> processedComponents2;
+		view.Each([&processedComponents2](TestComponent1& component1) {
+			processedComponents2.push_back(component1);
+		});
+		// components must be same on each position
+		REQUIRE(processedComponents1 == processedComponents2);
+	}
+	SECTION("Entity argument in each is same as in Pool's entities vector") {
+		// prepare data
+		pce::Pool<TestComponent1> pool;
+		auto entityManager = pce::EntityManager();
+		constexpr int N = 100;
+		std::vector<pce::Entity> entities;
+		entities.reserve(N);
+		for (auto i = 0; i < N; ++i) {
+			entities.push_back(entityManager.CreateEntity());
+			pool.Emplace(entities[i], i);
+		}
+		// create view and immediately call Each
+		auto i = 0;
+		pce::EntityView(&pool).Each([&i, &entities](pce::Entity entity, TestComponent1&) {
+			// check that entities are same
+			REQUIRE(entity == entities[i++]);
+		});
+	}
+	SECTION("Components can be modified in EntityView::Each") {
+		// prepare data
+		pce::Pool<TestComponent1> pool;
+		auto entityManager = pce::EntityManager();
+		constexpr int N = 100;
+		std::vector<pce::Entity> entities;
+		entities.reserve(N);
+		for (auto i = 0; i < N; ++i) {
+			entities.push_back(entityManager.CreateEntity());
+			pool.Emplace(entities[i], i);
+		}
+		// create view and immediately call Each
+		pce::EntityView(&pool).Each([](pce::Entity entity, TestComponent1& component) {
+			component.uintData += 1;
+		});
+		// check that all uintData is increased
+		for (auto i = 0; i < N; ++i) {
+			REQUIRE(i + 1 == pool.Get(entities[i]).uintData);
+		}
+	}
+	SECTION("EntityView reflects the current state of the pools") {
+		// prepare data
+		pce::Pool<TestComponent1> pool;
+		auto entityManager = pce::EntityManager();
+		constexpr int N = 100;
+		std::vector<pce::Entity> entities;
+		entities.reserve(N);
+		for (auto i = 0; i < N; ++i) {
+			entities.push_back(entityManager.CreateEntity());
+			pool.Emplace(entities[i], i);
+		}
+		// create view
+		int iterationCount1 = 0;
+		auto view = pce::EntityView(&pool);
+		view.Each([&iterationCount1](pce::Entity, TestComponent1&) {
+			iterationCount1 += 1;
+		});
+		// check that all uintData is increased
+		for (auto i = 0; i < N; ++i) {
+			if (i % 2 == 0) {
+				pool.Remove(entities[i]);
+			}
+		}
+		int iterationCount2 = 0;
+		view.Each([&iterationCount2](pce::Entity, TestComponent1&) {
+			iterationCount2 += 1;
+		});
+		// half of components removed and iteration count halved
+		REQUIRE(iterationCount1 / 2 == iterationCount2);
 	}
 }

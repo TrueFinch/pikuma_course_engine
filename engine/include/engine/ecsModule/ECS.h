@@ -120,7 +120,7 @@ namespace pce {
 
 		virtual void Remove(const Entity& entity) = 0;
 
-		virtual bool Has(const Entity& entity) const = 0;
+		[[nodiscard]] virtual bool Has(const Entity& entity) const = 0;
 	};
 
 	template<typename TComponent>
@@ -220,7 +220,7 @@ namespace pce {
 			return m_entities[index] == entity;
 		}
 
-		[[nodiscard]] const std::vector<Entity>& GetEntities() {
+		[[nodiscard]] const std::vector<Entity>& GetEntities() const {
 			return m_entities;
 		}
 
@@ -315,7 +315,7 @@ namespace pce {
 			return static_cast<Pool<TComponent>*>(m_componentPools[componentId].get());
 		}
 
-		IPool* GetPool(details::ComponentTypeId componentId) const {
+		[[nodiscard]] IPool* GetPool(details::ComponentTypeId componentId) const {
 			if (componentId >= m_componentPools.size() || !m_componentPools[componentId]) {
 				return nullptr;
 			}
@@ -407,11 +407,21 @@ namespace pce {
 
 		Entity CreateEntity();
 
+		[[nodiscard]] bool IsEntityAlive(const Entity& entity) const;
+
+		void DestroyEntity(const Entity& entity);
+
 		template<typename TComponent>
 			requires std::derived_from<TComponent, BaseComponent<TComponent>>
 		void RegisterComponent() {
 			PCE_ASSERT(!m_poolManager.HasComponent<TComponent>(), "Component already registered!");
 			m_poolManager.RegisterComponent<TComponent>();
+		}
+
+		template<typename TComponent>
+			requires std::derived_from<TComponent, BaseComponent<TComponent>>
+		[[nodiscard]] bool IsComponentRegistered() const {
+			return m_poolManager.HasComponent<TComponent>();
 		}
 
 		template<typename TComponent>
@@ -443,8 +453,9 @@ namespace pce {
 		template<typename TComponent>
 			requires std::derived_from<TComponent, BaseComponent<TComponent>>
 		[[nodiscard]] bool HasComponent(const Entity& entity) const {
-			PCE_ASSERT(m_entityManager.IsAlive(entity), "Entity is not alive!");
-			return m_poolManager.HasComponent<TComponent>(entity);
+			return m_entityManager.IsAlive(entity)
+					&& m_entityManager.GetSignature(entity).test(TComponent::GetTypeId())
+					&& m_poolManager.HasComponent<TComponent>(entity);
 		}
 
 
@@ -461,8 +472,6 @@ namespace pce {
 			PCE_ASSERT(m_entityManager.IsAlive(entity), "Entity is not alive!");
 			return m_poolManager.GetComponent<TComponent>(entity);
 		}
-
-		void DestroyEntity(const Entity& entity);
 
 		template<typename... TComponents>
 		[[nodiscard]] auto View() const {

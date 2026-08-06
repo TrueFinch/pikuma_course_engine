@@ -33,7 +33,7 @@ TEST_CASE("Entity Basic Operations & Semantics", "[Entity]") {
 		REQUIRE(e1_assign == e1);
 
 		// Move Construction
-		pce::Entity e1_moved = std::move(e1_copy);
+		pce::Entity e1_moved = std::move(e1_copy); // NOLINT(*-move-const-arg)
 		REQUIRE(e1_moved == e1);
 		REQUIRE(manager.IsAlive(e1_moved));
 	}
@@ -781,7 +781,7 @@ TEST_CASE("EntityView", "[EntityView]") {
 		}
 		// process only entities with TestComponent1
 		auto view = pce::EntityView(&pool);
-		std::array<bool, N> processedEntities;
+		std::array<bool, N> processedEntities{};
 		processedEntities.fill(false);
 		view.Each([&processedEntities](pce::Entity entity, TestComponent1& component) {
 			processedEntities[entity.GetIndex()] = true;
@@ -820,7 +820,7 @@ TEST_CASE("EntityView", "[EntityView]") {
 		}
 		// process only entities with TestComponent1
 		auto view = pce::EntityView(&pool1, &pool2);
-		std::array<bool, N> processedEntities;
+		std::array<bool, N> processedEntities{};
 		processedEntities.fill(false);
 		view.Each([&processedEntities](pce::Entity entity, TestComponent1& component1, TestComponent2& component2) {
 			processedEntities[entity.GetIndex()] = true;
@@ -904,11 +904,11 @@ TEST_CASE("EntityView", "[EntityView]") {
 		// create view and iterate with different overloads of 'Each' method
 		auto view = pce::EntityView(&pool);
 		std::vector<TestComponent1> processedComponents1;
-		view.Each([&processedComponents1](pce::Entity entity, TestComponent1& component1) {
+		view.Each([&processedComponents1](pce::Entity entity, const TestComponent1& component1) {
 			processedComponents1.push_back(component1);
 		});
 		std::vector<TestComponent1> processedComponents2;
-		view.Each([&processedComponents2](TestComponent1& component1) {
+		view.Each([&processedComponents2](const TestComponent1& component1) {
 			processedComponents2.push_back(component1);
 		});
 		// components must be same on each position
@@ -981,5 +981,449 @@ TEST_CASE("EntityView", "[EntityView]") {
 		});
 		// half of components removed and iteration count halved
 		REQUIRE(iterationCount1 / 2 == iterationCount2);
+	}
+}
+
+TEST_CASE("Registry entity management", "[Registry][EntityManager]") {
+	SECTION("Entity creation") {
+		// prepare
+		auto registry = pce::Registry();
+		auto e1 = registry.CreateEntity();
+		auto e2 = registry.CreateEntity();
+		// check entities is alive
+		REQUIRE(registry.IsEntityAlive(e1));
+		REQUIRE(e1.GetIndex() == 0);
+		REQUIRE(e1.GetGeneration() == 0);
+		REQUIRE(registry.IsEntityAlive(e2));
+		REQUIRE(e2.GetIndex() == 1);
+		REQUIRE(e2.GetGeneration() == 0);
+	}
+	SECTION("Entity removing") {
+		// prepare
+		auto registry = pce::Registry();
+		auto e1 = registry.CreateEntity();
+		auto e2 = registry.CreateEntity();
+		// destroy entity
+		registry.DestroyEntity(e1);
+		// check e1 is dead and e2 is alive
+		REQUIRE_FALSE(registry.IsEntityAlive(e1));
+		REQUIRE(registry.IsEntityAlive(e2));
+	}
+	SECTION("Double destroy is not allowed") {
+		// prepare
+		auto registry = pce::Registry();
+		auto e1 = registry.CreateEntity();
+		// destroy entity
+		registry.DestroyEntity(e1);
+		// double destroy is not allowed
+		REQUIRE_THROWS_AS(registry.DestroyEntity(e1), pce::AssertionException);
+	}
+	SECTION("Entity reuse after destroy") {
+		// prepare
+		auto registry = pce::Registry();
+		auto e1 = registry.CreateEntity();
+		// destroy entity
+		registry.DestroyEntity(e1);
+		// reuse entity's index
+		auto e2 = registry.CreateEntity();
+		// check indexes of e1 and e2 is same
+		REQUIRE(e1.GetIndex() == e2.GetIndex());
+		// check generations of e1 and e2 is different
+		REQUIRE(e1.GetGeneration() != e2.GetGeneration());
+	}
+}
+
+TEST_CASE("Registry component registration", "[Registry][ComponentManager]") {
+	SECTION("Components can be added after registration") {
+		// prepare
+		auto registry = pce::Registry();
+		auto e1 = registry.CreateEntity();
+		// register TestComponent1
+		registry.RegisterComponent<TestComponent1>();
+		REQUIRE(registry.IsComponentRegistered<TestComponent1>());
+		registry.EmplaceComponent<TestComponent1>(e1, 1);
+		// e1 entity has a component of type TestComponent1
+		REQUIRE(registry.HasComponent<TestComponent1>(e1));
+	}
+	SECTION("Different components can be registered") {
+		// prepare
+		auto registry = pce::Registry();
+		// no component type is registered yet
+		REQUIRE_FALSE(registry.IsComponentRegistered<TestComponent1>());
+		REQUIRE_FALSE(registry.IsComponentRegistered<TestComponent2>());
+		registry.RegisterComponent<TestComponent1>();
+		// registering one type does not register the other
+		REQUIRE(registry.IsComponentRegistered<TestComponent1>());
+		REQUIRE_FALSE(registry.IsComponentRegistered<TestComponent2>());
+		registry.RegisterComponent<TestComponent2>();
+		// check component types are registered
+		REQUIRE(registry.IsComponentRegistered<TestComponent1>());
+		REQUIRE(registry.IsComponentRegistered<TestComponent2>());
+	}
+	SECTION("Registering the same component type is not allowed") {
+		// prepare
+		auto registry = pce::Registry();
+		registry.RegisterComponent<TestComponent1>();
+		// try register second time
+		REQUIRE_THROWS_AS(registry.RegisterComponent<TestComponent1>(), pce::AssertionException);
+	}
+}
+
+TEST_CASE("Registry component addition", "[Registry][ComponentManager]") {
+	auto registry = pce::Registry();
+	registry.RegisterComponent<TestComponent1>();
+	auto e1 = registry.CreateEntity();
+	auto e2 = registry.CreateEntity();
+	SECTION("EmplaceComponent/AddComponent create component") {
+		registry.EmplaceComponent<TestComponent1>(e1, 1);
+		registry.AddComponent(e2, TestComponent1(1));
+		REQUIRE(registry.HasComponent<TestComponent1>(e1));
+		REQUIRE(registry.HasComponent<TestComponent1>(e2));
+	}
+	SECTION("EmplaceComponent/AddComponent same component to entity is not allowed") {
+		registry.EmplaceComponent<TestComponent1>(e1, 1);
+		// try emplace second time
+		REQUIRE_THROWS_AS(registry.EmplaceComponent<TestComponent1>(e1, 1), pce::AssertionException);
+		registry.AddComponent(e2, TestComponent1(1));
+		// try emplace second time
+		REQUIRE_THROWS_AS(registry.AddComponent(e2, TestComponent1(1)), pce::AssertionException);
+	}
+	SECTION("Components can not be added before registering") {
+		REQUIRE_THROWS_AS(registry.EmplaceComponent<TestComponent2>(e1, 2.f), pce::AssertionException);
+	}
+	SECTION("GetComponent gives access to created component") {
+		// prepare
+		registry.EmplaceComponent<TestComponent1>(e1, 1);
+		registry.AddComponent(e2, TestComponent1(2));
+		// test GetComponent
+		REQUIRE(registry.GetComponent<TestComponent1>(e1).uintData == 1);
+		const auto& registryConst = registry;
+		REQUIRE(registryConst.GetComponent<TestComponent1>(e2).uintData == 2);
+	}
+	SECTION("Not allowed to GetComponent if component was not created") {
+		// try to get component without adding it
+		REQUIRE_THROWS_AS(registry.GetComponent<TestComponent1>(e1), pce::AssertionException);
+	}
+	SECTION("Component can be modified through GetComponent") {
+		// prepare
+		registry.EmplaceComponent<TestComponent1>(e1, 1);
+		registry.GetComponent<TestComponent1>(e1).uintData = 2;
+		// check component value was changed
+		REQUIRE(registry.GetComponent<TestComponent1>(e1).uintData == 2);
+	}
+	SECTION("Adding component on a dead entity is not allowed") {
+		// destroy entity e1
+		registry.DestroyEntity(e1);
+		// try emplace component on a dead entity
+		REQUIRE_THROWS_AS(registry.EmplaceComponent<TestComponent1>(e1, 1), pce::AssertionException);
+		// AddComponent routes through EmplaceComponent and must throw as well
+		REQUIRE_THROWS_AS(registry.AddComponent(e1, TestComponent1(1)), pce::AssertionException);
+		// failed emplace must not leave stale entries in the pool
+		// reuse the index and ensure the fresh entity is fully usable
+		auto reused = registry.CreateEntity();
+		REQUIRE(reused.GetIndex() == e1.GetIndex());
+		REQUIRE_FALSE(registry.HasComponent<TestComponent1>(reused));
+		registry.EmplaceComponent<TestComponent1>(reused, 5);
+		REQUIRE(registry.GetComponent<TestComponent1>(reused).uintData == 5);
+		// the view must not visit any stale entity left by the failed emplace
+		std::vector<pce::Entity> visited;
+		registry.View<TestComponent1>().Each([&visited](const pce::Entity& entity, const TestComponent1&) {
+			visited.push_back(entity);
+		});
+		REQUIRE(visited.size() == 1);
+		REQUIRE(visited[0] == reused);
+	}
+	SECTION("Move-only component can be added") {
+		// prepare
+		registry.RegisterComponent<MoveOnlyComponent>();
+		registry.EmplaceComponent<MoveOnlyComponent>(e1, 1);
+		// check component was added with given value
+		REQUIRE(registry.HasComponent<MoveOnlyComponent>(e1));
+		REQUIRE(*registry.GetComponent<MoveOnlyComponent>(e1).value == 1);
+	}
+}
+
+TEST_CASE("Registry component removal", "[Registry][ComponentManager]") {
+	auto registry = pce::Registry();
+	registry.RegisterComponent<TestComponent1>();
+	auto e1 = registry.CreateEntity();
+	auto e2 = registry.CreateEntity();
+	SECTION("RemoveComponent removes the component") {
+		// prepare
+		registry.EmplaceComponent<TestComponent1>(e1, 1);
+		// remove
+		registry.RemoveComponent<TestComponent1>(e1);
+		REQUIRE_FALSE(registry.HasComponent<TestComponent1>(e1));
+	}
+	SECTION("Component can be added again after removal") {
+		// prepare
+		registry.EmplaceComponent<TestComponent1>(e1, 1);
+		// remove
+		registry.RemoveComponent<TestComponent1>(e1);
+		// emplace back again
+		registry.EmplaceComponent<TestComponent1>(e1, 2);
+		REQUIRE(registry.HasComponent<TestComponent1>(e1));
+		REQUIRE(registry.GetComponent<TestComponent1>(e1).uintData == 2);
+	}
+	SECTION("Remove of unregistered component is not allowed") {
+		REQUIRE_THROWS_AS(registry.RemoveComponent<TestComponent2>(e1), pce::AssertionException);
+	}
+	SECTION("Remove of a component of a dead entity is not allowed") {
+		// prepare
+		registry.EmplaceComponent<TestComponent1>(e1, 1);
+		registry.DestroyEntity(e1);
+		// try to remove component of a dead entity
+		REQUIRE_THROWS_AS(registry.RemoveComponent<TestComponent1>(e1), pce::AssertionException);
+	}
+	SECTION("Remove of unexisting component is not allowed") {
+		// emplace component for e1
+		registry.EmplaceComponent<TestComponent1>(e1, 1);
+		// try to remove component of e2
+		REQUIRE_THROWS_AS(registry.RemoveComponent<TestComponent1>(e2), pce::AssertionException);
+		// remove component of e1
+		registry.RemoveComponent<TestComponent1>(e1);
+		REQUIRE_THROWS_AS(registry.RemoveComponent<TestComponent1>(e1), pce::AssertionException);
+	}
+	SECTION("Remove of one component does not affect others") {
+		// prepare
+		registry.RegisterComponent<TestComponent2>();
+		registry.EmplaceComponent<TestComponent1>(e1, 1);
+		registry.EmplaceComponent<TestComponent2>(e1, 2.f);
+		// remove TestComponent1
+		registry.RemoveComponent<TestComponent1>(e1);
+		// TestComponent1 is not exist and can not be accessed
+		REQUIRE_FALSE(registry.HasComponent<TestComponent1>(e1));
+		REQUIRE_THROWS_AS(registry.GetComponent<TestComponent1>(e1), pce::AssertionException);
+		// TestComponent2 exists and have same value
+		REQUIRE(registry.HasComponent<TestComponent2>(e1));
+		REQUIRE(registry.GetComponent<TestComponent2>(e1).floatData == 2.f);
+	}
+}
+
+TEST_CASE("Registry entity component management", "[Registry][ComponentManager][EntityManager]") {
+	auto registry = pce::Registry();
+	registry.RegisterComponent<TestComponent1>();
+	registry.RegisterComponent<TestComponent2>();
+	auto e1 = registry.CreateEntity();
+	auto e2 = registry.CreateEntity();
+	SECTION("DestroyEntity removes all components") {
+		// prepare
+		registry.EmplaceComponent<TestComponent1>(e1, 1);
+		registry.EmplaceComponent<TestComponent2>(e1, 2.f);
+		registry.DestroyEntity(e1);
+		// check e1 components are not accessable
+		REQUIRE_FALSE(registry.HasComponent<TestComponent1>(e1));
+		REQUIRE_FALSE(registry.HasComponent<TestComponent2>(e1));
+		REQUIRE_THROWS_AS(registry.GetComponent<TestComponent1>(e1), pce::AssertionException);
+		REQUIRE_THROWS_AS(registry.GetComponent<TestComponent2>(e1), pce::AssertionException);
+		const auto& registryConst = registry;
+		REQUIRE_THROWS_AS(registryConst.GetComponent<TestComponent1>(e1), pce::AssertionException);
+	}
+	SECTION("DestroyEntity does not affect other entity's components") {
+		// prepare
+		registry.EmplaceComponent<TestComponent1>(e1, 1);
+		registry.EmplaceComponent<TestComponent2>(e1, 1.f);
+		registry.EmplaceComponent<TestComponent1>(e2, 2);
+		registry.EmplaceComponent<TestComponent2>(e2, 2.f);
+		registry.DestroyEntity(e1);
+		// check e2 components are not affected
+		REQUIRE(registry.HasComponent<TestComponent1>(e2));
+		REQUIRE(registry.HasComponent<TestComponent2>(e2));
+		REQUIRE(registry.GetComponent<TestComponent1>(e2).uintData == 2);
+		REQUIRE(registry.GetComponent<TestComponent2>(e2).floatData == 2.f);
+	}
+	SECTION("Destroy entity with move only component") {
+		// prepare
+		registry.RegisterComponent<MoveOnlyComponent>();
+		registry.EmplaceComponent<MoveOnlyComponent>(e1, 1);
+		registry.EmplaceComponent<MoveOnlyComponent>(e2, 2);
+		// destroy
+		registry.DestroyEntity(e1);
+		// check
+		REQUIRE_FALSE(registry.HasComponent<MoveOnlyComponent>(e1));
+		REQUIRE_THROWS_AS(registry.GetComponent<TestComponent1>(e1), pce::AssertionException);
+		REQUIRE(registry.HasComponent<MoveOnlyComponent>(e2));
+		REQUIRE(*registry.GetComponent<MoveOnlyComponent>(e2).value == 2);
+	}
+	SECTION("Reusing an entity creates a new entity with no leftover components") {
+		// prepare
+		registry.EmplaceComponent<TestComponent1>(e1, 1);
+		// destroy entity
+		registry.DestroyEntity(e1);
+		// reuse index for new entity
+		e2 = registry.CreateEntity();
+		REQUIRE(e2.GetIndex() == e1.GetIndex());
+		REQUIRE(e2.GetGeneration() != e1.GetGeneration());
+		// old component is not exist
+		REQUIRE_FALSE(registry.HasComponent<TestComponent1>(e1));
+		registry.EmplaceComponent<TestComponent1>(e2, 2);
+		REQUIRE(registry.GetComponent<TestComponent1>(e2).uintData == 2);
+	}
+}
+
+TEST_CASE("Registry iteration with view", "[Registry][EntityView]") {
+	auto registry = pce::Registry();
+	registry.RegisterComponent<TestComponent1>();
+	registry.RegisterComponent<TestComponent2>();
+	auto e1 = registry.CreateEntity();
+	auto e2 = registry.CreateEntity();
+	auto e3 = registry.CreateEntity();
+	SECTION("View iterates entities that have the component") {
+		// prepare
+		registry.EmplaceComponent<TestComponent1>(e1, 1);
+		registry.EmplaceComponent<TestComponent1>(e3, 3);
+		// iterate
+		std::vector<pce::Entity> entities;
+		registry.View<TestComponent1>().Each([&entities](const pce::Entity& entity, const TestComponent1&) {
+			entities.push_back(entity);
+		});
+		// check
+		REQUIRE(entities.size() == 2);
+		REQUIRE((entities[0] == e1 && entities[1] == e3));
+	}
+	SECTION("View of multiple components requires entity to have all of them") {
+		// prepare
+		registry.EmplaceComponent<TestComponent1>(e1, 1);
+		registry.EmplaceComponent<TestComponent1>(e2, 2);
+		registry.EmplaceComponent<TestComponent2>(e2, 2.f);
+		registry.EmplaceComponent<TestComponent2>(e3, 3.f);
+		// iterate
+		std::vector<pce::Entity> entities;
+		registry.View<TestComponent1, TestComponent2>().Each(
+			[&entities](const pce::Entity& entity, const auto&, const auto&) {
+				entities.push_back(entity);
+			});
+		// check
+		REQUIRE(entities.size() == 1);
+		REQUIRE(entities[0] == e2);
+	}
+	SECTION("Removal of the component removes its entity from view") {
+		// prepare
+		registry.EmplaceComponent<TestComponent1>(e1, 1);
+		// iterate
+		std::vector<pce::Entity> entities;
+		registry.View<TestComponent1>().Each([&entities](const pce::Entity& entity, const TestComponent1&) {
+			entities.push_back(entity);
+		});
+		// check iteration meets e1 entity
+		REQUIRE(entities.size() == 1);
+		REQUIRE(entities[0] == e1);
+		// remove component
+		registry.RemoveComponent<TestComponent1>(e1);
+		// iterate
+		entities.clear();
+		registry.View<TestComponent1>().Each([&entities](const pce::Entity& entity, const TestComponent1&) {
+			entities.push_back(entity);
+		});
+		// check no entities was met
+		REQUIRE(entities.empty());
+	}
+	SECTION("Destroying the entity removes it from view") {
+		// prepare
+		registry.EmplaceComponent<TestComponent1>(e1, 1);
+		// iterate
+		std::vector<pce::Entity> entities;
+		registry.View<TestComponent1>().Each([&entities](const pce::Entity& entity, const TestComponent1&) {
+			entities.push_back(entity);
+		});
+		// check iteration meets e1 entity
+		REQUIRE(entities.size() == 1);
+		REQUIRE(entities[0] == e1);
+		// remove component
+		registry.DestroyEntity(e1);
+		// iterate
+		entities.clear();
+		registry.View<TestComponent1>().Each([&entities](const pce::Entity& entity, const TestComponent1&) {
+			entities.push_back(entity);
+		});
+		// check no entities was met
+		REQUIRE(entities.empty());
+	}
+}
+
+TEST_CASE("Registry Stress", "[Registry][Stress]") {
+	// prepare
+	auto registry = pce::Registry();
+	registry.RegisterComponent<TestComponent1>();
+	registry.RegisterComponent<TestComponent2>();
+	registry.RegisterComponent<MoveOnlyComponent>();
+	constexpr int N = 100'000;
+	std::vector<pce::Entity> entities;
+	entities.reserve(N);
+	for (auto i = 0; i < N; i++) {
+		auto entity = registry.CreateEntity();
+		registry.EmplaceComponent<TestComponent1>(entity, i);
+		registry.EmplaceComponent<TestComponent2>(entity, static_cast<float>(i));
+		registry.EmplaceComponent<MoveOnlyComponent>(entity, i);
+		entities.push_back(entity);
+	}
+	for (const auto& entity: entities) {
+		REQUIRE(registry.GetComponent<TestComponent1>(entity).uintData == entity.GetIndex());
+		REQUIRE(registry.GetComponent<TestComponent2>(entity).floatData == static_cast<float>(entity.GetIndex()));
+		REQUIRE(*registry.GetComponent<MoveOnlyComponent>(entity).value == entity.GetIndex());
+	}
+	// remove TestComponent1 from odd entities
+	for (const auto& entity: entities) {
+		if (entity.GetIndex() % 2 == 1) {
+			registry.RemoveComponent<TestComponent1>(entity);
+		}
+	}
+	// component TestComponent1 removal does not affect other component
+	for (const auto& entity: entities) {
+		if (entity.GetIndex() % 2 == 0) {
+			REQUIRE(registry.GetComponent<TestComponent1>(entity).uintData == entity.GetIndex());
+		} else {
+			REQUIRE_FALSE(registry.HasComponent<TestComponent1>(entity));
+		}
+		REQUIRE(registry.GetComponent<TestComponent2>(entity).floatData == static_cast<float>(entity.GetIndex()));
+		REQUIRE(*registry.GetComponent<MoveOnlyComponent>(entity).value == entity.GetIndex());
+	}
+	// destroy even entities
+	std::vector<pce::Entity> oddEntities;
+	std::vector<pce::Entity> destroyedEntities;
+	for (const auto& entity: entities) {
+		if (entity.GetIndex() % 2 == 0) {
+			registry.DestroyEntity(entity);
+			destroyedEntities.push_back(entity);
+		} else {
+			oddEntities.push_back(entity);
+		}
+	}
+	// check destroyed entities are dead
+	for (const auto& entity: destroyedEntities) {
+		REQUIRE_FALSE(registry.IsEntityAlive(entity));
+	}
+	// check even entities is not available, odd entities are not affected
+	for (const auto& entity: entities) {
+		if (entity.GetIndex() % 2 == 0) {
+			REQUIRE_FALSE(registry.IsEntityAlive(entity));
+			REQUIRE_THROWS_AS(registry.GetComponent<TestComponent1>(entity), pce::AssertionException);
+		} else {
+			REQUIRE(registry.GetComponent<TestComponent2>(entity).floatData == static_cast<float>(entity.GetIndex()));
+			REQUIRE(*registry.GetComponent<MoveOnlyComponent>(entity).value == entity.GetIndex());
+		}
+	}
+	entities = oddEntities;
+	// populate with new entities reusing old indices
+	for (auto i = N - 1; i >= 0; --i) {
+		if (i % 2 == 1) {
+			continue;
+		}
+		auto entity = registry.CreateEntity();
+		// check entity was reused
+		REQUIRE(entity.GetIndex() == i);
+		REQUIRE(entity.GetGeneration() == 1);
+		// new entity with reused index does not have components
+		REQUIRE_FALSE(registry.HasComponent<TestComponent1>(entity));
+		REQUIRE_FALSE(registry.HasComponent<TestComponent2>(entity));
+		REQUIRE_FALSE(registry.HasComponent<MoveOnlyComponent>(entity));
+
+		REQUIRE_NOTHROW(registry.EmplaceComponent<TestComponent1>(entity, i));
+		REQUIRE_NOTHROW(registry.EmplaceComponent<TestComponent2>(entity, i));
+		REQUIRE_NOTHROW(registry.EmplaceComponent<MoveOnlyComponent>(entity, i));
+	}
+	// check destroyed entities are still dead
+	for (const auto& entity: destroyedEntities) {
+		REQUIRE_FALSE(registry.IsEntityAlive(entity));
 	}
 }

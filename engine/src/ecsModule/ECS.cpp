@@ -87,6 +87,10 @@ pce::Entity pce::Registry::CreateEntity() {
 	return m_entityManager.CreateEntity();
 }
 
+bool pce::Registry::IsEntityAlive(const Entity& entity) const {
+	return m_entityManager.IsAlive(entity);
+}
+
 void pce::Registry::DestroyEntity(const Entity& entity) {
 	PCE_ASSERT(m_entityManager.IsAlive(entity), "Entity is not alive!");
 	m_poolManager.ClearComponents(entity, m_entityManager.GetSignature(entity));

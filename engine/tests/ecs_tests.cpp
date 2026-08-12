@@ -1427,3 +1427,187 @@ TEST_CASE("Registry Stress", "[Registry][Stress]") {
 		REQUIRE_FALSE(registry.IsEntityAlive(entity));
 	}
 }
+
+TEST_CASE("CommandBuffer basic commands", "[CommandBuffer]") {
+	auto registry = pce::Registry();
+	auto commandBuffer = pce::CommandBuffer();
+	SECTION("Buffer empty after creation") {
+		REQUIRE(commandBuffer.Empty());
+	}
+	SECTION("Buffer not empty after any command") {
+		auto entity = commandBuffer.CreateEntity(registry);
+		commandBuffer.DestroyEntity(entity);
+		REQUIRE_FALSE(commandBuffer.Empty());
+	}
+	SECTION("Buffer empty after single command processing") {
+		auto entity = commandBuffer.CreateEntity(registry);
+		commandBuffer.DestroyEntity(entity);
+		commandBuffer.ProcessCommands(registry);
+		REQUIRE(commandBuffer.Empty());
+	}
+	SECTION("Buffer empty after several commands processing") {
+		auto e1 = commandBuffer.CreateEntity(registry);
+		auto e2 = commandBuffer.CreateEntity(registry);
+		commandBuffer.DestroyEntity(e1);
+		commandBuffer.DestroyEntity(e2);
+		commandBuffer.ProcessCommands(registry);
+		REQUIRE(commandBuffer.Empty());
+	}
+	SECTION("Processing an empty buffer is a no-op") {
+		commandBuffer.ProcessCommands(registry);
+		REQUIRE(commandBuffer.Empty());
+	}
+}
+
+TEST_CASE("CommandBuffer entity creation is immediate", "[CommandBuffer]") {
+	auto registry = pce::Registry();
+	auto commandBuffer = pce::CommandBuffer();
+	SECTION("Create entity command") {
+		auto entity = commandBuffer.CreateEntity(registry);
+		REQUIRE(registry.IsEntityAlive(entity));
+		commandBuffer.ProcessCommands(registry);
+		REQUIRE(registry.IsEntityAlive(entity));
+	}
+	SECTION("Create number of entities") {
+		std::vector<pce::Entity> entities;
+		constexpr int N = 10;
+		for (auto i = 0; i < N; ++i) {
+			entities.push_back(commandBuffer.CreateEntity(registry));
+		}
+		for (auto entity: entities) {
+			REQUIRE(registry.IsEntityAlive(entity));
+		}
+	}
+}
+
+TEST_CASE("CommandBuffer deferred component commands", "[CommandBuffer]") {
+	auto registry = pce::Registry();
+	registry.RegisterComponent<TestComponent1>();
+	registry.RegisterComponent<TestComponent2>();
+	auto commandBuffer = pce::CommandBuffer();
+	auto e1 = commandBuffer.CreateEntity(registry);
+	auto e2 = commandBuffer.CreateEntity(registry);
+
+	SECTION("EmplaceComponent is deferred until processing") {
+		commandBuffer.EmplaceComponent<TestComponent1>(e1, 1);
+		REQUIRE_FALSE(registry.HasComponent<TestComponent1>(e1));
+		commandBuffer.ProcessCommands(registry);
+		REQUIRE(registry.HasComponent<TestComponent1>(e1));
+		REQUIRE(registry.GetComponent<TestComponent1>(e1).uintData == 1);
+	}
+	SECTION("Multiple components on the same entity") {
+		commandBuffer.EmplaceComponent<TestComponent1>(e1, 1);
+		commandBuffer.EmplaceComponent<TestComponent2>(e1, 2.f);
+		commandBuffer.ProcessCommands(registry);
+		REQUIRE(registry.GetComponent<TestComponent1>(e1).uintData == 1);
+		REQUIRE(registry.GetComponent<TestComponent2>(e1).floatData == 2.f);
+	}
+	SECTION("RemoveComponent is deferred until processing") {
+		registry.EmplaceComponent<TestComponent1>(e1, 1);
+		commandBuffer.RemoveComponent<TestComponent1>(e1);
+		REQUIRE(registry.HasComponent<TestComponent1>(e1));
+		commandBuffer.ProcessCommands(registry);
+		REQUIRE_FALSE(registry.HasComponent<TestComponent1>(e1));
+	}
+	SECTION("Remove then emplace in the same frame keeps the component") {
+		registry.EmplaceComponent<TestComponent1>(e1, 1);
+		commandBuffer.RemoveComponent<TestComponent1>(e1);
+		commandBuffer.EmplaceComponent<TestComponent1>(e1, 2);
+		commandBuffer.ProcessCommands(registry);
+		REQUIRE(registry.HasComponent<TestComponent1>(e1));
+		REQUIRE(registry.GetComponent<TestComponent1>(e1).uintData == 2);
+	}
+	SECTION("Emplace then remove in the same frame removes the component") {
+		commandBuffer.EmplaceComponent<TestComponent1>(e1, 1);
+		commandBuffer.RemoveComponent<TestComponent1>(e1);
+		commandBuffer.ProcessCommands(registry);
+		REQUIRE_FALSE(registry.HasComponent<TestComponent1>(e1));
+	}
+	SECTION("Interleaved emplace of two types is grouped correctly") {
+		commandBuffer.EmplaceComponent<TestComponent1>(e1, 1);
+		commandBuffer.EmplaceComponent<TestComponent2>(e1, 2.f);
+		commandBuffer.EmplaceComponent<TestComponent1>(e2, 3);
+		commandBuffer.EmplaceComponent<TestComponent2>(e2, 4.f);
+		commandBuffer.ProcessCommands(registry);
+		REQUIRE(registry.GetComponent<TestComponent1>(e1).uintData == 1);
+		REQUIRE(registry.GetComponent<TestComponent2>(e1).floatData == 2.f);
+		REQUIRE(registry.GetComponent<TestComponent1>(e2).uintData == 3);
+		REQUIRE(registry.GetComponent<TestComponent2>(e2).floatData == 4.f);
+	}
+	SECTION("Move-only component can be emplaced through the buffer") {
+		registry.RegisterComponent<MoveOnlyComponent>();
+		commandBuffer.EmplaceComponent<MoveOnlyComponent>(e1, 5);
+		commandBuffer.ProcessCommands(registry);
+		REQUIRE(registry.HasComponent<MoveOnlyComponent>(e1));
+		REQUIRE(*registry.GetComponent<MoveOnlyComponent>(e1).value == 5);
+	}
+}
+
+TEST_CASE("CommandBuffer deferred entity destruction", "[CommandBuffer]") {
+	auto registry = pce::Registry();
+	auto commandBuffer = pce::CommandBuffer();
+	SECTION("DestroyEntity is deferred until processing") {
+		auto entity = commandBuffer.CreateEntity(registry);
+		commandBuffer.DestroyEntity(entity);
+		REQUIRE(registry.IsEntityAlive(entity));
+		commandBuffer.ProcessCommands(registry);
+		REQUIRE_FALSE(registry.IsEntityAlive(entity));
+	}
+	SECTION("Destroying multiple entities") {
+		std::vector<pce::Entity> entities;
+		constexpr int N = 10;
+		for (auto i = 0; i < N; ++i) {
+			entities.push_back(commandBuffer.CreateEntity(registry));
+		}
+		for (auto entity: entities) {
+			commandBuffer.DestroyEntity(entity);
+		}
+		commandBuffer.ProcessCommands(registry);
+		for (auto entity: entities) {
+			REQUIRE_FALSE(registry.IsEntityAlive(entity));
+		}
+	}
+	SECTION("Create and destroy in the same frame") {
+		auto entity = commandBuffer.CreateEntity(registry);
+		commandBuffer.DestroyEntity(entity);
+		commandBuffer.ProcessCommands(registry);
+		REQUIRE_FALSE(registry.IsEntityAlive(entity));
+	}
+}
+
+TEST_CASE("CommandBuffer exception safety", "[CommandBuffer]") {
+	auto registry = pce::Registry();
+	registry.RegisterComponent<TestComponent1>();
+	auto commandBuffer = pce::CommandBuffer();
+	SECTION("Buffer is cleared and reusable after a failing command") {
+		auto e1 = commandBuffer.CreateEntity(registry);
+		commandBuffer.EmplaceComponent<TestComponent1>(e1, 1);
+		commandBuffer.EmplaceComponent<TestComponent1>(e1, 2); // duplicate -> throws at processing
+		REQUIRE_THROWS_AS(commandBuffer.ProcessCommands(registry), pce::AssertionException);
+		REQUIRE(commandBuffer.Empty());
+		// the buffer must not re-process the failed commands
+		commandBuffer.ProcessCommands(registry);
+		REQUIRE(commandBuffer.Empty());
+		// buffer can be reused for a fresh entity
+		auto e2 = commandBuffer.CreateEntity(registry);
+		commandBuffer.EmplaceComponent<TestComponent1>(e2, 3);
+		commandBuffer.ProcessCommands(registry);
+		REQUIRE(registry.GetComponent<TestComponent1>(e2).uintData == 3);
+	}
+	SECTION("Failing emplace on a dead entity clears the buffer") {
+		auto e1 = commandBuffer.CreateEntity(registry);
+		registry.DestroyEntity(e1); // immediately dead
+		auto e2 = commandBuffer.CreateEntity(registry);
+		commandBuffer.EmplaceComponent<TestComponent1>(e1, 1); // throws at processing
+		commandBuffer.EmplaceComponent<TestComponent1>(e2, 2);
+		REQUIRE_THROWS_AS(commandBuffer.ProcessCommands(registry), pce::AssertionException);
+		REQUIRE(commandBuffer.Empty());
+	}
+	SECTION("Clear discards pending commands without applying them") {
+		auto e1 = commandBuffer.CreateEntity(registry);
+		commandBuffer.EmplaceComponent<TestComponent1>(e1, 1);
+		commandBuffer.Clear();
+		REQUIRE(commandBuffer.Empty());
+		REQUIRE_FALSE(registry.HasComponent<TestComponent1>(e1));
+	}
+}

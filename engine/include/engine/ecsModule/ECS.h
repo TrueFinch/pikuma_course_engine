@@ -10,6 +10,7 @@
 #include <functional>
 #include <limits>
 #include <memory>
+#include <utility>
 #include <vector>
 #include <fmt/base.h>
 
@@ -495,33 +496,90 @@ namespace pce {
 
 		CommandBuffer& operator=(CommandBuffer&&) = default;
 
-		void CreateEntity(std::function<void(Entity, Registry&)>&& callback);
+		// Creates the entity immediately. Adding/removing components and destroying
+		// the entity are deferred until ProcessCommands.
+		[[nodiscard]] Entity CreateEntity(Registry& registry);
 
 		template<typename TComponent, typename... TArgs>
 			requires std::is_constructible_v<TComponent, TArgs...>
 					&& std::derived_from<TComponent, BaseComponent<TComponent>>
 		void EmplaceComponent(const Entity& entity, TArgs&&... args) {
-			m_commands.emplace_back([entity, ...args = std::forward<TArgs>(args)](Registry& registry) {
-				registry.EmplaceComponent<TComponent>(entity, std::forward<TArgs>(args)...);
-			});
+			auto& group = GetOrCreateGroup<TComponent>();
+			group.m_entries.push_back({entity, false, static_cast<uint32>(group.m_components.size())});
+			group.m_components.emplace_back(std::forward<TArgs>(args)...);
+			++m_commandsCount;
 		}
 
 		template<typename TComponent>
 			requires std::derived_from<TComponent, BaseComponent<TComponent>>
 		void RemoveComponent(const Entity& entity) {
-			m_commands.emplace_back([entity](Registry& registry) {
-				registry.RemoveComponent<TComponent>(entity);
-			});
+			auto& group = GetOrCreateGroup<TComponent>();
+			group.m_entries.push_back({entity, true, 0});
+			++m_commandsCount;
 		}
 
 		void DestroyEntity(const Entity& entity);
 
 		void ProcessCommands(Registry& registry);
 
+		// Discards all deferred commands without applying them.
+		void Clear() noexcept;
+
 		[[nodiscard]] bool Empty() const noexcept;
 
 	private:
-		std::vector<std::function<void(Registry&)>> m_commands;
+		struct ICommandGroup {
+			virtual ~ICommandGroup() = default;
+
+			virtual void Execute(Registry& registry) = 0;
+
+			virtual void Clear() noexcept = 0;
+		};
+
+		template<typename TComponent>
+		struct ComponentGroup final: ICommandGroup {
+			struct Entry {
+				Entity entity;
+				bool isRemove;
+				uint32 componentIndex;
+			};
+
+			void Execute(Registry& registry) override {
+				for (const auto& entry: m_entries) {
+					if (entry.isRemove) {
+						registry.RemoveComponent<TComponent>(entry.entity);
+					} else {
+						registry.EmplaceComponent<TComponent>(entry.entity,
+															std::move(m_components[entry.componentIndex]));
+					}
+				}
+			}
+
+			void Clear() noexcept override {
+				m_entries.clear();
+				m_components.clear();
+			}
+
+			std::vector<Entry> m_entries;
+			std::vector<TComponent> m_components;
+		};
+
+		template<typename TComponent>
+		ComponentGroup<TComponent>& GetOrCreateGroup() {
+			const auto componentId = TComponent::GetTypeId();
+			if (componentId >= m_componentGroups.size()) {
+				m_componentGroups.resize(componentId + 1);
+			}
+			auto& group = m_componentGroups[componentId];
+			if (!group) {
+				group = std::make_unique<ComponentGroup<TComponent>>();
+			}
+			return static_cast<ComponentGroup<TComponent>&>(*group);
+		}
+
+		std::vector<std::unique_ptr<ICommandGroup>> m_componentGroups;
+		std::vector<Entity> m_entitiesToDestroy;
+		size_t m_commandsCount = 0;
 	};
 
 #pragma endregion

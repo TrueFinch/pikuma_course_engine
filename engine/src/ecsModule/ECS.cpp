@@ -97,30 +97,48 @@ void pce::Registry::DestroyEntity(const Entity& entity) {
 	m_entityManager.DestroyEntity(entity);
 }
 
-void pce::CommandBuffer::CreateEntity(std::function<void(Entity, Registry&)>&& callback) {
-	m_commands.emplace_back([setup = std::move(callback)](Registry& registry) {
-		const Entity entity = registry.CreateEntity();
-		if (setup) {
-			setup(entity, registry);
-		}
-	});
+pce::Entity pce::CommandBuffer::CreateEntity(Registry& registry) {
+	return registry.CreateEntity();
 }
 
 void pce::CommandBuffer::DestroyEntity(const Entity& entity) {
-	m_commands.emplace_back([entity](Registry& registry) {
-		registry.DestroyEntity(entity);
-	});
+	m_entitiesToDestroy.push_back(entity);
+	++m_commandsCount;
 }
 
 void pce::CommandBuffer::ProcessCommands(Registry& registry) {
-	for (auto& command: m_commands) {
-		command(registry);
+	struct Guard {
+		explicit Guard(CommandBuffer& buffer): buffer(buffer) {}
+
+		~Guard() {
+			buffer.Clear();
+		}
+
+		CommandBuffer& buffer;
+	} guard(*this);
+
+	for (auto& group: m_componentGroups) {
+		if (group) {
+			group->Execute(registry);
+		}
 	}
-	m_commands.clear();
+	for (const auto& entity: m_entitiesToDestroy) {
+		registry.DestroyEntity(entity);
+	}
+}
+
+void pce::CommandBuffer::Clear() noexcept {
+	for (auto& group: m_componentGroups) {
+		if (group) {
+			group->Clear();
+		}
+	}
+	m_entitiesToDestroy.clear();
+	m_commandsCount = 0;
 }
 
 bool pce::CommandBuffer::Empty() const noexcept {
-	return m_commands.empty();
+	return m_commandsCount == 0;
 }
 
 #pragma endregion

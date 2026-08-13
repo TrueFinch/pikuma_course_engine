@@ -12,7 +12,5 @@ namespace pce_demo {
 		MovementSystem();
 
 		void Update(pce::Registry& registry, pce::CommandBuffer& commandBuffer, float dt) override;
-
-		void FixedUpdate(pce::Registry& registry, pce::CommandBuffer& commandBuffer, float dt) override;
 	};
 }

@@ -336,8 +336,6 @@ namespace pce {
 		virtual ~ISystem() = default;
 
 		virtual void Update(Registry& registry, CommandBuffer& commandBuffer, float dt) = 0;
-
-		virtual void FixedUpdate(Registry& registry, CommandBuffer& commandBuffer, float dt) = 0;
 	};
 
 	class SystemManager final {

@@ -3,6 +3,7 @@
 //
 
 #include <array>
+#include <optional>
 #include <ranges>
 #include <unordered_map>
 #include <catch2/catch_test_macros.hpp>
@@ -1609,5 +1610,634 @@ TEST_CASE("CommandBuffer exception safety", "[CommandBuffer]") {
 		commandBuffer.Clear();
 		REQUIRE(commandBuffer.Empty());
 		REQUIRE_FALSE(registry.HasComponent<TestComponent1>(e1));
+	}
+}
+
+// ============================ ISystem & SystemManager tests ============================
+
+struct SystemCallLog {
+	int updateCount = 0;
+	int lastArgValue = -1;
+	int movedValue = -1;
+	pce::Registry* lastRegistry = nullptr;
+	pce::CommandBuffer* lastBuffer = nullptr;
+	std::vector<int> order;
+	std::vector<float> dts;
+};
+
+struct FrameFlag {
+	bool flag = false;
+};
+
+struct EntitySlot {
+	std::optional<pce::Entity> entity;
+};
+
+struct NoArgSystem: pce::ISystem {
+	static inline int updateCount = 0;
+
+	void Update(pce::Registry&, pce::CommandBuffer&, float) override {
+		++updateCount;
+	}
+};
+
+struct TrackingSystem: pce::ISystem {
+	std::shared_ptr<SystemCallLog> log;
+	int id = 0;
+
+	explicit TrackingSystem(std::shared_ptr<SystemCallLog> log, int id = 0)
+		: log(std::move(log)), id(id) {}
+
+	void Update(pce::Registry& registry, pce::CommandBuffer& commandBuffer, float dt) override {
+		++log->updateCount;
+		log->order.push_back(id);
+		log->dts.push_back(dt);
+		log->lastRegistry = &registry;
+		log->lastBuffer = &commandBuffer;
+	}
+};
+
+struct ArgSystem: pce::ISystem {
+	int value;
+	std::shared_ptr<SystemCallLog> log;
+
+	explicit ArgSystem(int value, std::shared_ptr<SystemCallLog> log)
+		: value(value), log(std::move(log)) {}
+
+	void Update(pce::Registry&, pce::CommandBuffer&, float) override {
+		++log->updateCount;
+		log->lastArgValue = value;
+	}
+};
+
+struct MoveOnlyArgSystem: pce::ISystem {
+	std::unique_ptr<int> value;
+	std::shared_ptr<SystemCallLog> log;
+
+	explicit MoveOnlyArgSystem(std::unique_ptr<int> value, std::shared_ptr<SystemCallLog> log)
+		: value(std::move(value)), log(std::move(log)) {}
+
+	void Update(pce::Registry&, pce::CommandBuffer&, float) override {
+		++log->updateCount;
+		log->movedValue = *value;
+	}
+};
+
+struct DestructorCountingSystem: pce::ISystem {
+	int* destructorCounter = nullptr;
+
+	explicit DestructorCountingSystem(int* destructorCounter)
+		: destructorCounter(destructorCounter) {}
+
+	~DestructorCountingSystem() override {
+		if (destructorCounter) {
+			++*destructorCounter;
+		}
+	}
+
+	void Update(pce::Registry&, pce::CommandBuffer&, float) override {}
+};
+
+struct ViewModifySystem: pce::ISystem {
+	void Update(pce::Registry& registry, pce::CommandBuffer&, float) override {
+		registry.View<TestComponent1>().Each([](pce::Entity, TestComponent1& component) {
+			component.uintData += 1;
+		});
+	}
+};
+
+template<typename TComponent, typename TValue>
+struct DeferredEmplaceSystem: pce::ISystem {
+	pce::Entity entity;
+	TValue value;
+
+	explicit DeferredEmplaceSystem(pce::Entity entity, TValue value)
+		: entity(entity), value(std::move(value)) {}
+
+	void Update(pce::Registry&, pce::CommandBuffer& commandBuffer, float) override {
+		commandBuffer.EmplaceComponent<TComponent>(entity, std::move(value));
+	}
+};
+
+struct DeferredRemoveSystem: pce::ISystem {
+	pce::Entity entity;
+
+	explicit DeferredRemoveSystem(pce::Entity entity)
+		: entity(entity) {}
+
+	void Update(pce::Registry&, pce::CommandBuffer& commandBuffer, float) override {
+		commandBuffer.RemoveComponent<TestComponent1>(entity);
+	}
+};
+
+struct DeferredDestroySystem: pce::ISystem {
+	pce::Entity entity;
+
+	explicit DeferredDestroySystem(pce::Entity entity)
+		: entity(entity) {}
+
+	void Update(pce::Registry&, pce::CommandBuffer& commandBuffer, float) override {
+		commandBuffer.DestroyEntity(entity);
+	}
+};
+
+struct EmplaceOnceSystem: pce::ISystem {
+	pce::Entity entity;
+	uint32 value;
+	bool executed = false;
+
+	explicit EmplaceOnceSystem(pce::Entity entity, uint32 value)
+		: entity(entity), value(value) {}
+
+	void Update(pce::Registry&, pce::CommandBuffer& commandBuffer, float) override {
+		if (!executed) {
+			commandBuffer.EmplaceComponent<TestComponent1>(entity, value);
+			executed = true;
+		}
+	}
+};
+
+struct ImmediateCreateSystem: pce::ISystem {
+	std::shared_ptr<EntitySlot> slot;
+
+	explicit ImmediateCreateSystem(std::shared_ptr<EntitySlot> slot)
+		: slot(std::move(slot)) {}
+
+	void Update(pce::Registry& registry, pce::CommandBuffer& commandBuffer, float) override {
+		slot->entity = commandBuffer.CreateEntity(registry);
+	}
+};
+
+struct DeferredEmplaceFromSlotSystem: pce::ISystem {
+	std::shared_ptr<EntitySlot> slot;
+	uint32 value;
+
+	explicit DeferredEmplaceFromSlotSystem(std::shared_ptr<EntitySlot> slot, uint32 value)
+		: slot(std::move(slot)), value(value) {}
+
+	void Update(pce::Registry&, pce::CommandBuffer& commandBuffer, float) override {
+		commandBuffer.EmplaceComponent<TestComponent1>(*slot->entity, value);
+	}
+};
+
+struct DeferredDestroyFromSlotSystem: pce::ISystem {
+	std::shared_ptr<EntitySlot> slot;
+
+	explicit DeferredDestroyFromSlotSystem(std::shared_ptr<EntitySlot> slot)
+		: slot(std::move(slot)) {}
+
+	void Update(pce::Registry&, pce::CommandBuffer& commandBuffer, float) override {
+		commandBuffer.DestroyEntity(*slot->entity);
+	}
+};
+
+struct RegistryDestroySystem: pce::ISystem {
+	pce::Entity entity;
+
+	explicit RegistryDestroySystem(pce::Entity entity)
+		: entity(entity) {}
+
+	void Update(pce::Registry& registry, pce::CommandBuffer&, float) override {
+		registry.DestroyEntity(entity);
+	}
+};
+
+struct ThrowingSystem: pce::ISystem {
+	std::shared_ptr<SystemCallLog> log;
+
+	explicit ThrowingSystem(std::shared_ptr<SystemCallLog> log)
+		: log(std::move(log)) {}
+
+	void Update(pce::Registry&, pce::CommandBuffer&, float) override {
+		++log->updateCount;
+		throw pce::AssertionException("ThrowingSystem throws");
+	}
+};
+
+struct ThrowOnceEmplaceSystem: pce::ISystem {
+	pce::Entity entity;
+	uint32 value;
+	std::shared_ptr<SystemCallLog> log;
+
+	explicit ThrowOnceEmplaceSystem(pce::Entity entity, uint32 value, std::shared_ptr<SystemCallLog> log)
+		: entity(entity), value(value), log(std::move(log)) {}
+
+	void Update(pce::Registry&, pce::CommandBuffer& commandBuffer, float) override {
+		if (log->updateCount == 0) {
+			commandBuffer.EmplaceComponent<TestComponent1>(entity, value);
+			++log->updateCount;
+			throw pce::AssertionException("ThrowOnceEmplaceSystem throws on first frame");
+		}
+		++log->updateCount;
+	}
+};
+
+struct NotASystem {};
+
+static_assert(std::is_abstract_v<pce::ISystem>);
+static_assert(!std::is_abstract_v<TrackingSystem>);
+
+struct NoOverrideSystem: pce::ISystem {};
+static_assert(std::is_abstract_v<NoOverrideSystem>);
+
+static_assert(std::derived_from<TrackingSystem, pce::ISystem>);
+static_assert(!std::derived_from<NotASystem, pce::ISystem>);
+static_assert(std::is_constructible_v<TrackingSystem, std::shared_ptr<SystemCallLog>>);
+static_assert(!std::is_constructible_v<TrackingSystem, int>);
+// libstdc++ reports is_copy_constructible for vectors of unique_ptr as true even though
+// a real copy fails to compile, so SystemManager is de-facto move-only.
+static_assert(std::is_move_constructible_v<pce::SystemManager>);
+
+TEST_CASE("ISystem", "[System]") {
+	SECTION("Virtual dispatch through base pointer") {
+		auto log = std::make_shared<SystemCallLog>();
+		std::unique_ptr<pce::ISystem> system = std::make_unique<TrackingSystem>(log, 7);
+		pce::Registry registry;
+		pce::CommandBuffer commandBuffer;
+		system->Update(registry, commandBuffer, 1.5f);
+		REQUIRE(log->updateCount == 1);
+		REQUIRE(log->order == std::vector<int>{7});
+		REQUIRE(log->dts == std::vector<float>{1.5f});
+	}
+
+	SECTION("Polymorphic destruction through base pointer") {
+		int destructorCount = 0;
+		{
+			std::unique_ptr<pce::ISystem> system = std::make_unique<DestructorCountingSystem>(&destructorCount);
+			REQUIRE(destructorCount == 0);
+		}
+		REQUIRE(destructorCount == 1);
+	}
+}
+
+TEST_CASE("SystemManager::EmplaceSystem", "[SystemManager]") {
+	SECTION("Emplace default-constructible system") {
+		pce::SystemManager manager;
+		manager.EmplaceSystem<NoArgSystem>();
+		pce::Registry registry;
+		NoArgSystem::updateCount = 0;
+		manager.Update(registry, 1.f);
+		REQUIRE(NoArgSystem::updateCount == 1);
+	}
+
+	SECTION("Emplace system with constructor arguments") {
+		pce::SystemManager manager;
+		auto log = std::make_shared<SystemCallLog>();
+		manager.EmplaceSystem<ArgSystem>(42, log);
+		pce::Registry registry;
+		manager.Update(registry, 1.f);
+		REQUIRE(log->lastArgValue == 42);
+	}
+
+	SECTION("Emplace system with move-only constructor argument") {
+		pce::SystemManager manager;
+		auto log = std::make_shared<SystemCallLog>();
+		manager.EmplaceSystem<MoveOnlyArgSystem>(std::make_unique<int>(10), log);
+		pce::Registry registry;
+		manager.Update(registry, 1.f);
+		REQUIRE(log->movedValue == 10);
+	}
+
+	SECTION("Multiple systems are updated in emplacement order") {
+		pce::SystemManager manager;
+		auto log = std::make_shared<SystemCallLog>();
+		manager.EmplaceSystem<TrackingSystem>(log, 0);
+		manager.EmplaceSystem<TrackingSystem>(log, 1);
+		manager.EmplaceSystem<TrackingSystem>(log, 2);
+		pce::Registry registry;
+		manager.Update(registry, 1.f);
+		REQUIRE(log->updateCount == 3);
+		REQUIRE(log->order == std::vector<int>{0, 1, 2});
+	}
+
+	SECTION("Manager is movable and works after move") {
+		auto log = std::make_shared<SystemCallLog>();
+		pce::SystemManager manager;
+		manager.EmplaceSystem<TrackingSystem>(log, 5);
+		pce::SystemManager moved = std::move(manager);
+		pce::Registry registry;
+		moved.Update(registry, 1.f);
+		REQUIRE(log->updateCount == 1);
+	}
+}
+
+TEST_CASE("SystemManager::Update", "[SystemManager]") {
+	SECTION("Update on empty manager is a no-op") {
+		pce::SystemManager manager;
+		pce::Registry registry;
+		REQUIRE_NOTHROW(manager.Update(registry, 1.f));
+	}
+
+	SECTION("Single system is updated once per frame") {
+		pce::SystemManager manager;
+		auto log = std::make_shared<SystemCallLog>();
+		manager.EmplaceSystem<TrackingSystem>(log);
+		pce::Registry registry;
+		constexpr int FRAMES = 10;
+		for (auto frame = 0; frame < FRAMES; ++frame) {
+			manager.Update(registry, 1.f);
+		}
+		REQUIRE(log->updateCount == FRAMES);
+	}
+
+	SECTION("dt is forwarded to every system") {
+		pce::SystemManager manager;
+		auto log = std::make_shared<SystemCallLog>();
+		manager.EmplaceSystem<TrackingSystem>(log);
+		manager.EmplaceSystem<TrackingSystem>(log);
+		pce::Registry registry;
+		manager.Update(registry, 0.016f);
+		REQUIRE(log->dts.size() == 2);
+		for (auto dt: log->dts) {
+			REQUIRE(dt == 0.016f);
+		}
+	}
+
+	SECTION("All systems receive the same registry") {
+		pce::SystemManager manager;
+		auto log1 = std::make_shared<SystemCallLog>();
+		auto log2 = std::make_shared<SystemCallLog>();
+		manager.EmplaceSystem<TrackingSystem>(log1);
+		manager.EmplaceSystem<TrackingSystem>(log2);
+		pce::Registry registry;
+		manager.Update(registry, 1.f);
+		REQUIRE(log1->lastRegistry == &registry);
+		REQUIRE(log1->lastRegistry == log2->lastRegistry);
+	}
+
+	SECTION("Each system has its own command buffer, stable across frames") {
+		pce::SystemManager manager;
+		auto log1 = std::make_shared<SystemCallLog>();
+		auto log2 = std::make_shared<SystemCallLog>();
+		manager.EmplaceSystem<TrackingSystem>(log1);
+		manager.EmplaceSystem<TrackingSystem>(log2);
+		pce::Registry registry;
+		manager.Update(registry, 1.f);
+		REQUIRE(log1->lastBuffer != nullptr);
+		REQUIRE(log1->lastBuffer != log2->lastBuffer);
+		auto firstBuffer = log1->lastBuffer;
+		manager.Update(registry, 1.f);
+		REQUIRE(log1->lastBuffer == firstBuffer);
+	}
+}
+
+TEST_CASE("SystemManager two-phase command processing", "[SystemManager]") {
+	SECTION("Deferred emplace is not visible to later systems in the same frame") {
+		pce::Registry registry;
+		registry.RegisterComponent<TestComponent1>();
+		auto entity = registry.CreateEntity();
+
+		pce::SystemManager manager;
+		manager.EmplaceSystem<DeferredEmplaceSystem<TestComponent1, uint32>>(entity, 7);
+		auto sawDuringFrame = std::make_shared<FrameFlag>();
+		struct CheckComponentSystem: pce::ISystem {
+			pce::Entity entity;
+			std::shared_ptr<FrameFlag> flag;
+
+			explicit CheckComponentSystem(pce::Entity entity, std::shared_ptr<FrameFlag> flag)
+				: entity(entity), flag(std::move(flag)) {}
+
+			void Update(pce::Registry& registry, pce::CommandBuffer&, float) override {
+				flag->flag = registry.HasComponent<TestComponent1>(entity);
+			}
+		};
+		manager.EmplaceSystem<CheckComponentSystem>(entity, sawDuringFrame);
+
+		manager.Update(registry, 1.f);
+		REQUIRE_FALSE(sawDuringFrame->flag);
+		REQUIRE(registry.HasComponent<TestComponent1>(entity));
+		REQUIRE(registry.GetComponent<TestComponent1>(entity).uintData == 7);
+	}
+
+	SECTION("Deferred destroy keeps entity alive during the frame") {
+		pce::Registry registry;
+		auto entity = registry.CreateEntity();
+
+		pce::SystemManager manager;
+		manager.EmplaceSystem<DeferredDestroySystem>(entity);
+		auto aliveDuringFrame = std::make_shared<FrameFlag>();
+		struct CheckAliveSystem: pce::ISystem {
+			pce::Entity entity;
+			std::shared_ptr<FrameFlag> flag;
+
+			explicit CheckAliveSystem(pce::Entity entity, std::shared_ptr<FrameFlag> flag)
+				: entity(entity), flag(std::move(flag)) {}
+
+			void Update(pce::Registry& registry, pce::CommandBuffer&, float) override {
+				flag->flag = registry.IsEntityAlive(entity);
+			}
+		};
+		manager.EmplaceSystem<CheckAliveSystem>(entity, aliveDuringFrame);
+
+		manager.Update(registry, 1.f);
+		REQUIRE(aliveDuringFrame->flag);
+		REQUIRE_FALSE(registry.IsEntityAlive(entity));
+	}
+
+	SECTION("Immediate CreateEntity is visible to later systems in the same frame") {
+		pce::Registry registry;
+
+		pce::SystemManager manager;
+		auto slot = std::make_shared<EntitySlot>();
+		manager.EmplaceSystem<ImmediateCreateSystem>(slot);
+		auto aliveDuringFrame = std::make_shared<FrameFlag>();
+		struct CheckCreatedSystem: pce::ISystem {
+			std::shared_ptr<EntitySlot> slot;
+			std::shared_ptr<FrameFlag> flag;
+
+			explicit CheckCreatedSystem(std::shared_ptr<EntitySlot> slot, std::shared_ptr<FrameFlag> flag)
+				: slot(std::move(slot)), flag(std::move(flag)) {}
+
+			void Update(pce::Registry& registry, pce::CommandBuffer&, float) override {
+				flag->flag = slot->entity.has_value() && registry.IsEntityAlive(*slot->entity);
+			}
+		};
+		manager.EmplaceSystem<CheckCreatedSystem>(slot, aliveDuringFrame);
+
+		manager.Update(registry, 1.f);
+		REQUIRE(aliveDuringFrame->flag);
+		REQUIRE(slot->entity.has_value());
+		REQUIRE(registry.IsEntityAlive(*slot->entity));
+	}
+
+	SECTION("Command buffers are cleared between frames; deferred commands apply exactly once") {
+		pce::Registry registry;
+		registry.RegisterComponent<TestComponent1>();
+		auto entity = registry.CreateEntity();
+
+		pce::SystemManager manager;
+		manager.EmplaceSystem<EmplaceOnceSystem>(entity, 5);
+
+		manager.Update(registry, 1.f);
+		REQUIRE(registry.HasComponent<TestComponent1>(entity));
+		REQUIRE(registry.GetComponent<TestComponent1>(entity).uintData == 5);
+
+		REQUIRE_NOTHROW(manager.Update(registry, 1.f));
+		REQUIRE(registry.GetComponent<TestComponent1>(entity).uintData == 5);
+	}
+
+	SECTION("Command buffers are processed in system order") {
+		pce::Registry registry;
+		registry.RegisterComponent<TestComponent1>();
+		auto entity = registry.CreateEntity();
+		registry.EmplaceComponent<TestComponent1>(entity, 1);
+
+		pce::SystemManager manager;
+		// system 0 defers removal, system 1 defers re-emplace with a new value
+		manager.EmplaceSystem<DeferredRemoveSystem>(entity);
+		manager.EmplaceSystem<DeferredEmplaceSystem<TestComponent1, uint32>>(entity, 2);
+
+		manager.Update(registry, 1.f);
+		// the removal must be processed before the emplace, so the component ends with the new value
+		REQUIRE(registry.HasComponent<TestComponent1>(entity));
+		REQUIRE(registry.GetComponent<TestComponent1>(entity).uintData == 2);
+	}
+}
+
+TEST_CASE("SystemManager::Update exception handling", "[SystemManager]") {
+	SECTION("Exception in a system propagates and later systems are skipped") {
+		pce::SystemManager manager;
+		auto log1 = std::make_shared<SystemCallLog>();
+		auto throwLog = std::make_shared<SystemCallLog>();
+		auto log3 = std::make_shared<SystemCallLog>();
+		manager.EmplaceSystem<TrackingSystem>(log1);
+		manager.EmplaceSystem<ThrowingSystem>(throwLog);
+		manager.EmplaceSystem<TrackingSystem>(log3);
+
+		pce::Registry registry;
+		REQUIRE_THROWS_AS(manager.Update(registry, 1.f), pce::AssertionException);
+		REQUIRE(log1->updateCount == 1);
+		REQUIRE(throwLog->updateCount == 1);
+		REQUIRE(log3->updateCount == 0);
+	}
+
+	SECTION("Regression: commands deferred in a failed frame are discarded") {
+		pce::Registry registry;
+		registry.RegisterComponent<TestComponent1>();
+		auto entity = registry.CreateEntity();
+
+		pce::SystemManager manager;
+		auto log = std::make_shared<SystemCallLog>();
+		manager.EmplaceSystem<ThrowOnceEmplaceSystem>(entity, 7, log);
+
+		// first frame: the system defers an emplace and throws
+		REQUIRE_THROWS_AS(manager.Update(registry, 1.f), pce::AssertionException);
+		REQUIRE_FALSE(registry.HasComponent<TestComponent1>(entity));
+
+		// second frame: the system does not throw, but the stale command must not be applied
+		REQUIRE_NOTHROW(manager.Update(registry, 1.f));
+		REQUIRE_FALSE(registry.HasComponent<TestComponent1>(entity));
+	}
+
+	SECTION("Manager remains usable after an exception") {
+		pce::Registry registry;
+		registry.RegisterComponent<TestComponent1>();
+		auto entity = registry.CreateEntity();
+
+		pce::SystemManager manager;
+		auto throwLog = std::make_shared<SystemCallLog>();
+		auto trackLog = std::make_shared<SystemCallLog>();
+		manager.EmplaceSystem<ThrowOnceEmplaceSystem>(entity, 7, throwLog);
+		manager.EmplaceSystem<TrackingSystem>(trackLog);
+
+		REQUIRE_THROWS_AS(manager.Update(registry, 1.f), pce::AssertionException);
+		// the system after the throwing one did not run in the failed frame
+		REQUIRE(trackLog->updateCount == 0);
+
+		REQUIRE_NOTHROW(manager.Update(registry, 1.f));
+		REQUIRE(trackLog->updateCount == 1);
+	}
+}
+
+TEST_CASE("SystemManager registry integration", "[SystemManager]") {
+	SECTION("System modifies components through a registry view") {
+		pce::Registry registry;
+		registry.RegisterComponent<TestComponent1>();
+		constexpr int N = 10;
+		std::vector<pce::Entity> entities;
+		for (auto i = 0; i < N; ++i) {
+			auto entity = registry.CreateEntity();
+			registry.EmplaceComponent<TestComponent1>(entity, i);
+			entities.push_back(entity);
+		}
+
+		pce::SystemManager manager;
+		manager.EmplaceSystem<ViewModifySystem>();
+
+		manager.Update(registry, 1.f);
+		for (auto i = 0; i < N; ++i) {
+			REQUIRE(registry.GetComponent<TestComponent1>(entities[i]).uintData == i + 1);
+		}
+	}
+
+	SECTION("Immediate destroy through registry is visible to later systems") {
+		pce::Registry registry;
+		auto entity = registry.CreateEntity();
+
+		pce::SystemManager manager;
+		manager.EmplaceSystem<RegistryDestroySystem>(entity);
+		auto aliveDuringFrame = std::make_shared<FrameFlag>();
+		struct CheckAliveSystem: pce::ISystem {
+			pce::Entity entity;
+			std::shared_ptr<FrameFlag> flag;
+
+			explicit CheckAliveSystem(pce::Entity entity, std::shared_ptr<FrameFlag> flag)
+				: entity(entity), flag(std::move(flag)) {}
+
+			void Update(pce::Registry& registry, pce::CommandBuffer&, float) override {
+				flag->flag = registry.IsEntityAlive(entity);
+			}
+		};
+		manager.EmplaceSystem<CheckAliveSystem>(entity, aliveDuringFrame);
+
+		manager.Update(registry, 1.f);
+		REQUIRE_FALSE(aliveDuringFrame->flag);
+		REQUIRE_FALSE(registry.IsEntityAlive(entity));
+	}
+
+	SECTION("Combined create, emplace and destroy across systems") {
+		pce::Registry registry;
+		registry.RegisterComponent<TestComponent1>();
+
+		pce::SystemManager manager;
+		auto slot = std::make_shared<EntitySlot>();
+		manager.EmplaceSystem<ImmediateCreateSystem>(slot);            // creates immediately
+		manager.EmplaceSystem<DeferredEmplaceFromSlotSystem>(slot, 3); // defers emplace
+		manager.EmplaceSystem<DeferredDestroyFromSlotSystem>(slot);    // defers destroy
+
+		manager.Update(registry, 1.f);
+
+		REQUIRE(slot->entity.has_value());
+		const auto entity = *slot->entity;
+		REQUIRE_FALSE(registry.IsEntityAlive(entity));
+		// the reused index must be clean of leftovers
+		auto fresh = registry.CreateEntity();
+		REQUIRE(fresh.GetIndex() == entity.GetIndex());
+		REQUIRE_FALSE(registry.HasComponent<TestComponent1>(fresh));
+	}
+}
+
+TEST_CASE("SystemManager stress", "[SystemManager][Stress]") {
+	SECTION("Many systems and frames keep counts and order stable") {
+		constexpr int SYSTEMS = 100;
+		constexpr int FRAMES = 1000;
+		pce::SystemManager manager;
+		auto log = std::make_shared<SystemCallLog>();
+		for (auto i = 0; i < SYSTEMS; ++i) {
+			manager.EmplaceSystem<TrackingSystem>(log, i);
+		}
+		pce::Registry registry;
+		for (auto frame = 0; frame < FRAMES; ++frame) {
+			manager.Update(registry, static_cast<float>(frame));
+		}
+		REQUIRE(log->updateCount == SYSTEMS * FRAMES);
+		REQUIRE(log->order.size() == SYSTEMS * FRAMES);
+		REQUIRE(log->dts.size() == SYSTEMS * FRAMES);
+		for (auto frame = 0; frame < FRAMES; ++frame) {
+			for (auto i = 0; i < SYSTEMS; ++i) {
+				REQUIRE(log->order[frame * SYSTEMS + i] == i);
+			}
+			REQUIRE(log->dts[frame * SYSTEMS] == static_cast<float>(frame));
+		}
 	}
 }

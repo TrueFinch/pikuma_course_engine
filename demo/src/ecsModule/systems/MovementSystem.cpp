@@ -16,5 +16,3 @@ void pce_demo::MovementSystem::Update(pce::Registry& registry, pce::CommandBuffe
 		pce::log("{}\n\t{}", entity, transform);
 	});
 }
-
-void pce_demo::MovementSystem::FixedUpdate(pce::Registry& registry, pce::CommandBuffer& commandBuffer, float dt) {}

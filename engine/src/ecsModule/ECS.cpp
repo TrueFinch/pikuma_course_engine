@@ -68,14 +68,21 @@ void pce::PoolManager::ClearComponents(const Entity& entity, const details::Sign
 #pragma region System
 
 void pce::SystemManager::Update(Registry& registry, float dt) {
-	for (auto i = 0; i < m_systems.size(); ++i) {
-		m_systems[i]->Update(registry, m_commandBuffers[i], dt);
-	}
-
-	for (auto& buffer: m_commandBuffers) {
-		if (!buffer.Empty()) {
-			buffer.ProcessCommands(registry);
+	try {
+		for (auto i = 0; i < m_systems.size(); ++i) {
+			m_systems[i]->Update(registry, m_commandBuffers[i], dt);
 		}
+
+		for (auto& buffer: m_commandBuffers) {
+			if (!buffer.Empty()) {
+				buffer.ProcessCommands(registry);
+			}
+		}
+	} catch (...) {
+		for (auto& buffer: m_commandBuffers) {
+			buffer.Clear();
+		}
+		throw;
 	}
 }
 

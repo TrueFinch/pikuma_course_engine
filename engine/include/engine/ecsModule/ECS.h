@@ -94,8 +94,9 @@ namespace pce {
 #pragma region Component
 
 	namespace details {
-		using ComponentTypeId = uint32;
-		static inline ComponentTypeId ComponentLastId = 0;
+		using ComponentTypeId = std::uint32_t;
+
+		ComponentTypeId GetNextComponentTypeId() noexcept;
 	}
 
 	template<typename Derived>
@@ -103,10 +104,9 @@ namespace pce {
 	protected:
 		~BaseComponent() = default;
 
-		static inline details::ComponentTypeId id = details::ComponentLastId++;
-
 	public:
 		[[nodiscard]] static details::ComponentTypeId GetTypeId() noexcept {
+			static const pce::details::ComponentTypeId id = pce::details::GetNextComponentTypeId();
 			return id;
 		}
 

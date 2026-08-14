@@ -53,6 +53,11 @@ const pce::details::Signature& pce::EntityManager::GetSignature(const Entity& en
 #pragma endregion
 #pragma region Component
 
+pce::details::ComponentTypeId pce::details::GetNextComponentTypeId() noexcept {
+	static ComponentTypeId lastId = 0;
+	return lastId++;
+}
+
 void pce::PoolManager::ClearComponents(const Entity& entity, const details::Signature& signature) const {
 	for (auto i = 0; i < signature.size(); ++i) {
 		if (!signature.test(i)) {

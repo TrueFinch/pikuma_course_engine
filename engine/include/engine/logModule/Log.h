@@ -14,21 +14,21 @@ namespace pce {
 
 	template<typename... Args>
 	void log(fmt::format_string<Args...> msg, Args&&... args) {
-		log(eLogLevel::PCE_LOG, fmt::format(msg, args...));
+		log(eLogLevel::PCE_LOG, fmt::vformat(msg, fmt::make_format_args(args...)));
 	}
 
 	void log(std::string_view msg);
 
 	template<typename... Args>
 	void logWarning(fmt::format_string<Args...> msg, Args&&... args) {
-		log(eLogLevel::PCE_WARNING, fmt::format(msg, std::forward<Args>(args)...));
+		log(eLogLevel::PCE_WARNING, fmt::vformat(msg, fmt::make_format_args(args...)));
 	}
 
 	inline void logWarning(std::string_view msg);
 
 	template<typename... Args>
 	void logError(fmt::format_string<Args...> msg, Args&&... args) {
-		log(eLogLevel::PCE_ERROR, fmt::format(msg, std::forward<Args>(args)...));
+		log(eLogLevel::PCE_ERROR, fmt::vformat(msg, fmt::make_format_args(args...)));
 	}
 
 	inline void logError(std::string_view msg);

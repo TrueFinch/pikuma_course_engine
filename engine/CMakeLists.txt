@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.30)
 project(Engine LANGUAGES CXX)
 
-add_library(${ENGINE_LIB} SHARED)
+add_library(${ENGINE_LIB} STATIC)
 set_target_properties(${ENGINE_LIB}
 		PROPERTIES
 		CXX_STANDARD 20
@@ -24,6 +24,7 @@ set(ENGINE_HEADERS
 
 		include/engine/ecsModule/components/TransformComponent.h
 		include/engine/ecsModule/components/VelocityComponent.h
+		include/engine/ecsModule/components/SpriteComponent.h
 		include/engine/ecsModule/ECS.h
 
 		include/engine/utilsModule/GlmFormat.h
@@ -80,18 +81,6 @@ target_link_libraries(${ENGINE_LIB}
 )
 
 #TODO create install script later
-
-
-if (BUILD_DEMO)
-	# Copying shared library to demo target directory
-	add_custom_command(
-			TARGET ${ENGINE_LIB} POST_BUILD
-			COMMAND ${CMAKE_COMMAND} -E copy_if_different
-			$<TARGET_FILE:${ENGINE_LIB}>
-			$<TARGET_FILE_DIR:demo>
-			COMMENT "Copying shared library to demo target directory"
-	)
-endif ()
 
 if (BUILD_ENGINE_TESTS)
 	add_subdirectory(tests)

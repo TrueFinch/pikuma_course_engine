@@ -29,6 +29,10 @@ set(ENGINE_HEADERS
 
 		include/engine/utilsModule/GlmFormat.h
 		include/engine/utilsModule/Assert.h
+
+		include/engine/graphicsModule/GraphicsContext.h
+		include/engine/graphicsModule/RenderQueue.h
+		include/engine/graphicsModule/Renderer.h
 )
 
 # source files
@@ -39,6 +43,10 @@ set(ENGINE_SOURCES
 		src/logModule/observers/SpdLogger.cpp
 
 		src/ecsModule/ECS.cpp
+
+		src/graphicsModule/GraphicsContext.cpp
+		src/graphicsModule/RenderQueue.cpp
+		src/graphicsModule/Renderer.cpp
 )
 
 target_sources(${ENGINE_LIB}

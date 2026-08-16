@@ -4,58 +4,34 @@
 
 #include "engine/coreModule/Game.h"
 
-#include <iostream>
+#include <SDL_events.h>
+#include <SDL_timer.h>
 
+#include "engine/ecsModule/ECS.h"
+#include "engine/graphicsModule/GraphicsContext.h"
 #include "engine/logModule/Log.h"
 #include "engine/logModule/LogManager.h"
 #include "engine/logModule/LogManagerInstance.h"
-#include "engine/utilsModule/Types.h"
 #include "engine/logModule/SpdLogger.h"
-#include "engine/ecsModule/ECS.h"
-#include "engine/ecsModule/components/TransformComponent.h"
+#include "engine/utilsModule/Types.h"
 
-pce::Game::Game()
-	: m_window(nullptr, SDL_DestroyWindow)
-	, m_renderer(nullptr, SDL_DestroyRenderer) {}
+pce::Game::Game() = default;
 
-void pce::Game::Initialize() {
+pce::Game::~Game() = default;
+
+bool pce::Game::Initialize() {
 	// init game systems
 	logModule::LogManagerInstance::Init(logModule::LogManager::Create());
 	logModule::LogManagerInstance::GetInstance().RegisterObserver(std::make_unique<logModule::SpdLogger>());
-
-	if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
-		logError("SDL_Init Error: {}", SDL_GetError());
-		return;
-	}
-
-	// TODO: move to settings
-	int width = 1280, height = 800;
-	// create sdl window
-	m_window.reset(SDL_CreateWindow(
-		nullptr,
-		SDL_WINDOWPOS_CENTERED,
-		SDL_WINDOWPOS_CENTERED,
-		width, height, SDL_WINDOW_RESIZABLE
-	));
-
-	if (!m_window) {
-		logError("SDL_CreateWindow Error: {}", SDL_GetError());
-		return;
-	}
-	// create sdl renderer
-	m_renderer.reset(SDL_CreateRenderer(
-		m_window.get(), -1, 0
-	));
-	if (!m_renderer) {
-		logError("SDL_CreateRenderer Error: {}", SDL_GetError());
-		return;
-	}
+	m_graphics = std::make_unique<GraphicsContext>();
+	return m_graphics->Initialize(1280, 800);
 
 	// TODO: add toggle fullscreen to settings
 	// SDL_SetWindowFullscreen(m_window.get(), SDL_WINDOW_FULLSCREEN_DESKTOP);
 }
 
 void pce::Game::Run() {
+	m_prevFrameMillis = SDL_GetTicks();
 	m_isRunning = true;
 	while (m_isRunning) {
 		ProcessInput();
@@ -66,9 +42,7 @@ void pce::Game::Run() {
 }
 
 void pce::Game::Destroy() {
-	m_renderer.reset(nullptr);
-	m_window.reset(nullptr);
-	SDL_Quit();
+	m_graphics.reset(); // GraphicsContext::~GraphicsContext -> SDL_Quit
 }
 
 pce::Registry& pce::Game::GetRegistry() {
@@ -77,6 +51,10 @@ pce::Registry& pce::Game::GetRegistry() {
 
 pce::SystemManager& pce::Game::GetSystemManager() {
 	return m_systemManager;
+}
+
+pce::RenderQueue& pce::Game::GetRenderQueue() {
+	return m_renderQueue;
 }
 
 void pce::Game::ProcessInput() {
@@ -108,15 +86,14 @@ void pce::Game::Delay() {
 void pce::Game::Update() {
 	m_deltaTime = static_cast<float>(SDL_GetTicks() - m_prevFrameMillis) / 1000.f;
 	m_prevFrameMillis = SDL_GetTicks();
-
+	log("{}", m_deltaTime);
 	m_systemManager.Update(m_registry, m_deltaTime);
 }
 
 void pce::Game::Render() {
-	SDL_SetRenderDrawColor(m_renderer.get(), 0, 0, 0, 255);
-	SDL_RenderClear(m_renderer.get());
-
-	//TODO: draw game objects
-
-	SDL_RenderPresent(m_renderer.get());
+	auto& renderer = m_graphics->GetRenderer();
+	renderer.BeginFrame();
+	renderer.Flush(m_renderQueue);
+	renderer.EndFrame();
+	m_renderQueue.Clear();
 }

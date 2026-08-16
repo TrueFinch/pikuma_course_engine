@@ -4,27 +4,31 @@
 #pragma once
 
 #include <memory>
-#include <SDL2/SDL.h>
 
 #include "engine/ecsModule/ECS.h"
+#include "engine/graphicsModule/RenderQueue.h"
 #include "engine/utilsModule/Types.h"
 
 namespace pce {
+	class GraphicsContext;
+
 	class Game {
 	public:
 		Game();
 
-		~Game() = default;
+		~Game();
 
-		void Initialize();
+		[[nodiscard]] bool Initialize();
 
 		void Run();
 
 		void Destroy();
 
-		Registry& GetRegistry();
+		[[nodiscard]] Registry& GetRegistry();
 
-		SystemManager& GetSystemManager();
+		[[nodiscard]] SystemManager& GetSystemManager();
+
+		[[nodiscard]] RenderQueue& GetRenderQueue();
 
 	private:
 		void ProcessInput();
@@ -41,8 +45,8 @@ namespace pce {
 		uint32 m_milliPerFrame = 1000 / m_fps;
 		float m_deltaTime = 0;
 
-		std::unique_ptr<SDL_Window, decltype(&SDL_DestroyWindow)> m_window;
-		std::unique_ptr<SDL_Renderer, decltype(&SDL_DestroyRenderer)> m_renderer;
+		RenderQueue m_renderQueue;
+		std::unique_ptr<GraphicsContext> m_graphics;
 
 		Registry m_registry;
 		SystemManager m_systemManager;

@@ -331,9 +331,13 @@ namespace pce {
 	class Registry;
 	class CommandBuffer;
 
+	enum class SystemPhase : uint8 { Simulation, Render };
+
 	class ISystem {
 	public:
 		virtual ~ISystem() = default;
+
+		virtual SystemPhase GetPhase() const noexcept { return SystemPhase::Simulation; }
 
 		virtual void Update(Registry& registry, CommandBuffer& commandBuffer, float dt) = 0;
 	};

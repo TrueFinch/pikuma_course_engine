@@ -6,6 +6,7 @@ find_package(SDL2 CONFIG REQUIRED)
 # header files
 set(DEMO_HEADERS
 		src/ecsModule/systems/MovementSystem.h
+		src/ecsModule/systems/RenderSystem.h
 
 )
 
@@ -13,6 +14,7 @@ set(DEMO_HEADERS
 set(DEMO_SOURCES
 		src/main.cpp
 		src/ecsModule/systems/MovementSystem.cpp
+		src/ecsModule/systems/RenderSystem.cpp
 )
 
 add_executable(${DEMO_TARGET} ${DEMO_HEADERS} ${DEMO_SOURCES})

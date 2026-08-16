@@ -75,7 +75,14 @@ void pce::PoolManager::ClearComponents(const Entity& entity, const details::Sign
 void pce::SystemManager::Update(Registry& registry, float dt) {
 	try {
 		for (auto i = 0; i < m_systems.size(); ++i) {
-			m_systems[i]->Update(registry, m_commandBuffers[i], dt);
+			if (m_systems[i]->GetPhase() == SystemPhase::Simulation) {
+				m_systems[i]->Update(registry, m_commandBuffers[i], dt);
+			}
+		}
+		for (auto i = 0; i < m_systems.size(); ++i) {
+			if (m_systems[i]->GetPhase() == SystemPhase::Render) {
+				m_systems[i]->Update(registry, m_commandBuffers[i], dt);
+			}
 		}
 
 		for (auto& buffer: m_commandBuffers) {

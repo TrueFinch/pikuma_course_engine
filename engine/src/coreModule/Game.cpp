@@ -93,6 +93,7 @@ void pce::Game::Update() {
 void pce::Game::Render() {
 	auto& renderer = m_graphics->GetRenderer();
 	renderer.BeginFrame();
+	m_renderQueue.SortBatches();
 	renderer.Flush(m_renderQueue);
 	renderer.EndFrame();
 	m_renderQueue.Clear();

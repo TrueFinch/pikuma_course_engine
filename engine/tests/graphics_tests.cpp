@@ -1,5 +1,5 @@
 //
-// Created by Vladimir on 16.08.2026.
+// Created by Vladimir Glushkov on 16.08.2026.
 //
 
 #include <array>
@@ -8,69 +8,122 @@
 #include "engine/graphicsModule/RenderQueue.h"
 
 TEST_CASE("RenderQueue", "[RenderQueue]") {
+	pce::RenderQueue queue;
+
 	SECTION("Empty queue") {
-		pce::RenderQueue queue;
 		REQUIRE(queue.IsEmpty());
-		REQUIRE(queue.DrawCalls().empty());
-		REQUIRE(queue.Vertices().empty());
-		REQUIRE(queue.Indices().empty());
+		REQUIRE(queue.Batches().empty());
 	}
 
-	SECTION("AddSprite produces one draw call with 4 vertices and 6 indices") {
-		pce::RenderQueue queue;
+	SECTION("AddSprite produces one batch with 4 vertices and 6 indices") {
 		queue.AddSprite({10.f, 20.f}, {30.f, 40.f});
 		REQUIRE_FALSE(queue.IsEmpty());
-		REQUIRE(queue.DrawCalls().size() == 1);
-		REQUIRE(queue.Vertices().size() == 4);
-		REQUIRE(queue.Indices().size() == 6);
 
-		const auto& call = queue.DrawCalls()[0];
-		REQUIRE(call.texture.id == 0);
-		REQUIRE(call.vertexOffset == 0);
-		REQUIRE(call.vertexCount == 4);
-		REQUIRE(call.indexOffset == 0);
-		REQUIRE(call.indexCount == 6);
-		REQUIRE(call.layer == 0);
-		const auto v = queue.Vertices();
-		// position = центр спрайта (половина размера вычитается из позиции)
-		REQUIRE(v[0].position == glm::vec2{-5.f, 0.f});
-		REQUIRE(v[2].position == glm::vec2{25.f, 40.f});
+		const auto batches = queue.Batches();
+		REQUIRE(batches.size() == 1);
+		const auto& batch = batches[0];
+		REQUIRE(batch.key.texture.id == 0);
+		REQUIRE(batch.key.layer == 0);
+		REQUIRE(batch.vertices.size() == 4);
+		REQUIRE(batch.indices.size() == 6);
+
+		// position is in center of sprite (pivot 0.5 0.5)
+		REQUIRE(batch.vertices[0].position == glm::vec2{-5.f, 0.f});
+		REQUIRE(batch.vertices[2].position == glm::vec2{25.f, 40.f});
 	}
 
-	SECTION("Multiple sprites produce correct offsets") {
-		pce::RenderQueue queue;
+	SECTION("Sprites with the same key are batched together") {
 		queue.AddSprite({0.f, 0.f}, {10.f, 10.f});
 		queue.AddSprite({0.f, 0.f}, {10.f, 10.f});
-		REQUIRE(queue.DrawCalls().size() == 2);
-		REQUIRE(queue.DrawCalls()[1].vertexOffset == 4);
-		REQUIRE(queue.DrawCalls()[1].indexOffset == 6);
-		REQUIRE(queue.Vertices().size() == 8);
-		REQUIRE(queue.Indices().size() == 12);
+		queue.AddSprite({0.f, 0.f}, {10.f, 10.f});
+
+		const auto batches = queue.Batches();
+		REQUIRE(batches.size() == 1);
+		REQUIRE(batches[0].vertices.size() == 12);
+		REQUIRE(batches[0].indices.size() == 18);
 	}
 
-	SECTION("AddMesh appends raw geometry") {
-		pce::RenderQueue queue;
-		std::array<pce::Vertex, 3> vertices{
+	SECTION("Indices are batch-relative (baseVertex offset)") {
+		queue.AddSprite({0.f, 0.f}, {10.f, 10.f});
+		queue.AddSprite({0.f, 0.f}, {10.f, 10.f});
+
+		const auto batches = queue.Batches();
+		REQUIRE(batches.size() == 1);
+		const std::array<uint32, 6> first{0, 1, 2, 0, 2, 3};
+		const std::array<uint32, 6> second{4, 5, 6, 4, 6, 7};
+		for (auto i = 0; i < 6; ++i) {
+			REQUIRE(batches[0].indices[i] == first[i]);
+			REQUIRE(batches[0].indices[i + 6] == second[i]);
+		}
+	}
+
+	SECTION("Different textures produce separate batches") {
+		queue.AddTexturedQuad({1}, {0.f, 0.f}, {10.f, 10.f}, {0.f, 0.f, 1.f, 1.f});
+		queue.AddSprite({0.f, 0.f}, {0.5f, 0.5f});
+		queue.AddTexturedQuad({2}, {0.f, 0.f}, {10.f, 10.f}, {0.f, 0.f, 1.f, 1.f});
+
+		const auto batches = queue.Batches();
+		REQUIRE(batches.size() == 3);
+		// inside layer 0 batches sorted by texture id
+		REQUIRE(batches[0].key.texture.id == 0);
+		REQUIRE(batches[1].key.texture.id == 1);
+		REQUIRE(batches[2].key.texture.id == 2);
+	}
+
+	SECTION("Interleaved textures still produce one batch per key") {
+		for (auto i = 0; i < 100; ++i) {
+			queue.AddTexturedQuad({1}, {0.5f, 0.5f}, {10.f, 10.f}, {0.f, 0.f, 1.f, 1.f});
+			queue.AddTexturedQuad({2}, {0.5f, 0.5f}, {10.f, 10.f}, {0.f, 0.f, 1.f, 1.f});
+		}
+
+		const auto batches = queue.Batches();
+		REQUIRE(batches.size() == 2);
+		REQUIRE(batches[0].vertices.size() == 400);
+		REQUIRE(batches[1].vertices.size() == 400);
+	}
+
+	SECTION("Batches are sorted by (layer, texture) regardless of add order") {
+		queue.AddTexturedQuad({1}, {0.f, 0.f}, {10.f, 10.f}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFF, 0.f, 1);
+		queue.AddTexturedQuad({2}, {0.f, 0.f}, {10.f, 10.f}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFF, 0.f, 0);
+		queue.AddTexturedQuad({1}, {0.f, 0.f}, {10.f, 10.f}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFF, 0.f, 0);
+
+		const auto batches = queue.Batches();
+		REQUIRE(batches.size() == 3);
+		// layer ordered: all zero layers are first, then layer 1
+		REQUIRE(batches[0].key.layer == 0);
+		REQUIRE(batches[0].key.texture.id == 1);
+		REQUIRE(batches[1].key.layer == 0);
+		REQUIRE(batches[1].key.texture.id == 2);
+		REQUIRE(batches[2].key.layer == 1);
+		REQUIRE(batches[2].key.texture.id == 1);
+	}
+
+	SECTION("AddMesh appends raw geometry with batch-relative indices") {
+		std::array vertices{
 			pce::Vertex{{0.f, 0.f}, 0xFFFFFFFF, {0.f, 0.f}},
 			pce::Vertex{{1.f, 0.f}, 0xFFFFFFFF, {1.f, 0.f}},
 			pce::Vertex{{0.f, 1.f}, 0xFFFFFFFF, {0.f, 1.f}},
 		};
 		std::array<uint32, 3> indices{0, 1, 2};
+
 		queue.AddMesh({}, vertices, indices);
-		REQUIRE(queue.DrawCalls().size() == 1);
-		REQUIRE(queue.Vertices().size() == 3);
-		REQUIRE(queue.Indices().size() == 3);
-		REQUIRE(queue.DrawCalls()[0].vertexCount == 3);
-		REQUIRE(queue.DrawCalls()[0].indexCount == 3);
+		queue.AddMesh({}, vertices, indices);
+
+		const auto batches = queue.Batches();
+		REQUIRE(batches.size() == 1);
+		REQUIRE(batches[0].vertices.size() == 6);
+		REQUIRE(batches[0].indices.size() == 6);
+		// second mesh: indices offsets by baseVertex
+		REQUIRE(batches[0].indices[0] == 0);
+		REQUIRE(batches[0].indices[3] == 3);
+		REQUIRE(batches[0].indices[4] == 4);
+		REQUIRE(batches[0].indices[5] == 5);
 	}
 
 	SECTION("Clear resets the queue") {
-		pce::RenderQueue queue;
 		queue.AddSprite({}, {});
 		queue.Clear();
 		REQUIRE(queue.IsEmpty());
-		REQUIRE(queue.Vertices().empty());
-		REQUIRE(queue.Indices().empty());
-		REQUIRE(queue.DrawCalls().empty());
+		REQUIRE(queue.Batches().empty());
 	}
 }

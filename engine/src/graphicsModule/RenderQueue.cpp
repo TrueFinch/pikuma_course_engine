@@ -4,6 +4,7 @@
 
 #include "engine/graphicsModule/RenderQueue.h"
 
+#include <algorithm>
 #include <cmath>
 
 void pce::RenderQueue::AddSprite(
@@ -30,62 +31,82 @@ void pce::RenderQueue::AddTexturedQuad(
 		{uv.z, uv.w}, {uv.x, uv.w},
 	});
 
-	const auto baseVertex = static_cast<uint32>(m_vertices.size());
+	auto& batch = GetBatch(BatchKey{texture, layer});
+
+	const auto baseVertex = static_cast<uint32>(batch.vertices.size());
 	for (auto i = 0; i < 4; ++i) {
 		const glm::vec2 rotated{
 			localCorners[i].x * cosA - localCorners[i].y * sinA,
 			localCorners[i].x * sinA + localCorners[i].y * cosA,
 		};
-		m_vertices.emplace_back(position + rotated, color, uvs[i]);
+		batch.vertices.emplace_back(position + rotated, color, uvs[i]);
 	}
 
-	const auto baseIndex = static_cast<uint32>(m_indices.size());
-	const std::array<uint32, 6> quadIndices({
-		baseVertex + 0, baseVertex + 1, baseVertex + 2,
-		baseVertex + 0, baseVertex + 2, baseVertex + 3,
-	});
-
-	m_indices.insert(m_indices.end(), quadIndices.begin(), quadIndices.end());
-	m_drawCalls.emplace_back(
-		texture, baseVertex, 4,
-		baseIndex, 6, layer
-	);
+	const std::array<uint32, 6> quadIndices{0, 1, 2, 0, 2, 3,};
+	for (auto index: quadIndices) {
+		batch.indices.emplace_back(baseVertex + index);
+	}
 }
 
 void pce::RenderQueue::AddMesh(
 	TextureHandle texture, std::span<const Vertex> vertices, std::span<const uint32> indices,
 	int layer
 ) {
-	const auto baseVertex = static_cast<uint32>(m_vertices.size());
-	const auto baseIndex = static_cast<uint32>(m_indices.size());
+	auto& batch = GetBatch(BatchKey{texture, layer});
 
-	m_vertices.insert(m_vertices.end(), vertices.begin(), vertices.end());
-	m_indices.insert(m_indices.end(), indices.begin(), indices.end());
-
-	m_drawCalls.emplace_back(
-		texture, baseVertex, static_cast<uint32>(vertices.size()),
-		baseIndex, static_cast<uint32>(indices.size()), layer
-	);
+	const auto baseVertex = static_cast<uint32>(batch.vertices.size());
+	batch.vertices.insert(batch.vertices.end(), vertices.begin(), vertices.end());
+	for (const auto& index: indices) {
+		batch.indices.emplace_back(baseVertex + index);
+	}
 }
 
-std::span<const pce::Vertex> pce::RenderQueue::Vertices() const {
-	return m_vertices;
+void pce::RenderQueue::SortBatches() {
+	std::stable_sort(m_batches.begin(), m_batches.end(), [](const Batch& a, const Batch& b) {
+		if (a.key.layer != b.key.layer) {
+			return a.key.layer < b.key.layer;
+		}
+		return a.key.texture < b.key.texture;
+	});
+	m_batchIndex.clear();
+	for (auto i = 0; i < m_batches.size(); ++i) {
+		m_batchIndex.emplace(m_batches[i].key, i);
+	}
+	m_lastBatchIndex = std::numeric_limits<decltype(m_lastBatchIndex)>::max();
 }
 
-std::span<const uint32> pce::RenderQueue::Indices() const {
-	return m_indices;
-}
-
-std::span<const pce::DrawCall> pce::RenderQueue::DrawCalls() const {
-	return m_drawCalls;
+std::span<const pce::Batch> pce::RenderQueue::Batches() const {
+	return m_batches;
 }
 
 void pce::RenderQueue::Clear() noexcept {
-	m_vertices.clear();
-	m_indices.clear();
-	m_drawCalls.clear();
+	m_batches.clear();
+	m_batchIndex.clear();
+	m_lastBatchIndex = std::numeric_limits<decltype(m_lastBatchIndex)>::max();
 }
 
 bool pce::RenderQueue::IsEmpty() const noexcept {
-	return m_drawCalls.empty();
+	return m_batches.empty();
+}
+
+pce::Batch& pce::RenderQueue::GetBatch(const BatchKey& key) {
+	auto batchIndex = m_lastBatchIndex;
+	if (batchIndex == std::numeric_limits<decltype(m_lastBatchIndex)>::max()
+		|| m_batches[batchIndex].key != key
+	) {
+		batchIndex = GetOrCreateBatchIndex(key);
+		m_lastBatchIndex = batchIndex;
+	}
+	return m_batches[batchIndex];
+}
+
+size_t pce::RenderQueue::GetOrCreateBatchIndex(const BatchKey& key) {
+	const auto it = m_batchIndex.find(key);
+	if (it != m_batchIndex.end()) {
+		return it->second;
+	}
+	const auto index = m_batches.size();
+	m_batches.emplace_back(key);
+	m_batchIndex.emplace(key, index);
+	return index;
 }

@@ -47,24 +47,20 @@ void pce::Renderer::BeginFrame() const {
 	SDL_RenderClear(m_impl->m_renderer.get());
 }
 
-void pce::Renderer::Flush(const pce::RenderQueue& queue) const {
+void pce::Renderer::Flush(const RenderQueue& queue) const {
 	if (queue.IsEmpty()) {
 		return;
 	}
-	const auto vertices = queue.Vertices();
-	const auto indices = queue.Indices();
-	const auto drawCalls = queue.DrawCalls();
+	const auto batches = queue.Batches();
 
-	// todo: sort draw calls by (layer, texture) for batching
-	for (const auto& call: drawCalls) {
-		// todo: get texture from texture manager with TextureHangle
+	for (const auto& batch: batches) {
 		SDL_Texture* texture = nullptr;
 		auto renderRes = SDL_RenderGeometry(
 			m_impl->m_renderer.get(), texture,
-			reinterpret_cast<const SDL_Vertex*>(vertices.data()),
-			static_cast<int>(vertices.size()),
-			reinterpret_cast<const int*>(indices.data() + call.indexOffset),
-			static_cast<int>(call.indexCount)
+			reinterpret_cast<const SDL_Vertex*>(batch.vertices.data()),
+			static_cast<int>(batch.vertices.size()),
+			reinterpret_cast<const int*>(batch.indices.data()),
+			static_cast<int>(batch.indices.size())
 		);
 		PCE_ASSERT(renderRes == 0, "[Renderer::Flush]: Failed to render queue!]");
 	}

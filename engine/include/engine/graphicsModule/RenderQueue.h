@@ -5,7 +5,9 @@
 #pragma once
 
 #include <compare>
+#include <limits>
 #include <span>
+#include <unordered_map>
 #include <vector>
 #include <glm/vec2.hpp>
 #include <glm/vec4.hpp>
@@ -26,6 +28,32 @@ namespace pce {
 		auto operator<=>(const TextureHandle&) const = default;
 	};
 
+	struct BatchKey {
+		TextureHandle texture;
+		int layer = 0;
+
+		explicit BatchKey(TextureHandle texture, int layer): texture{texture}, layer{layer} {};
+
+		auto operator<=>(const BatchKey&) const = default;
+	};
+
+	struct Batch {
+		BatchKey key;
+		std::vector<Vertex> vertices{};
+		std::vector<uint32> indices{};
+	};
+}
+
+template<>
+struct std::hash<pce::BatchKey> {
+	size_t operator()(const pce::BatchKey& key) const noexcept {
+		size_t h = std::hash<uint32>{}(key.texture.id);
+		h ^= std::hash<int>{}(key.layer) + 0x9e3779b9 + (h << 6) + (h >> 2);
+		return h;
+	}
+};
+
+namespace pce {
 	struct DrawCall {
 		TextureHandle texture;
 		uint32 vertexOffset = 0;
@@ -47,19 +75,21 @@ namespace pce {
 		void AddMesh(TextureHandle texture, std::span<const Vertex> vertices, std::span<const uint32> indices,
 					int layer = 0);
 
-		[[nodiscard]] std::span<const Vertex> Vertices() const;
+		void SortBatches();
 
-		[[nodiscard]] std::span<const uint32> Indices() const;
-
-		[[nodiscard]] std::span<const DrawCall> DrawCalls() const;
+		[[nodiscard]] std::span<const Batch> Batches() const;
 
 		void Clear() noexcept;
 
 		[[nodiscard]] bool IsEmpty() const noexcept;
 
 	private:
-		std::vector<Vertex> m_vertices;
-		std::vector<uint32> m_indices;
-		std::vector<DrawCall> m_drawCalls;
+		[[nodiscard]] Batch& GetBatch(const BatchKey& key);
+
+		[[nodiscard]] size_t GetOrCreateBatchIndex(const BatchKey& key);
+
+		std::vector<Batch> m_batches;
+		std::unordered_map<BatchKey, size_t> m_batchIndex;
+		size_t m_lastBatchIndex = std::numeric_limits<size_t>::max();
 	};
 } // namespace pce

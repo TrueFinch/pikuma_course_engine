@@ -1832,6 +1832,21 @@ struct ThrowOnceEmplaceSystem: pce::ISystem {
 	}
 };
 
+struct RenderPhaseSystem: pce::ISystem {
+	std::shared_ptr<SystemCallLog> log;
+	int id = 0;
+
+	explicit RenderPhaseSystem(std::shared_ptr<SystemCallLog> log, int id = 0)
+		: log(std::move(log)), id(id) {}
+
+	pce::SystemPhase GetPhase() const noexcept override { return pce::SystemPhase::Render; }
+
+	void Update(pce::Registry&, pce::CommandBuffer&, float) override {
+		++log->updateCount;
+		log->order.push_back(id);
+	}
+};
+
 struct NotASystem {};
 
 static_assert(std::is_abstract_v<pce::ISystem>);
@@ -2214,6 +2229,29 @@ TEST_CASE("SystemManager registry integration", "[SystemManager]") {
 		auto fresh = registry.CreateEntity();
 		REQUIRE(fresh.GetIndex() == entity.GetIndex());
 		REQUIRE_FALSE(registry.HasComponent<TestComponent1>(fresh));
+	}
+}
+
+TEST_CASE("SystemManager phases", "[SystemManager]") {
+	SECTION("Render phase runs after all Simulation systems regardless of registration order") {
+		pce::SystemManager manager;
+		auto log = std::make_shared<SystemCallLog>();
+		manager.EmplaceSystem<TrackingSystem>(log, 0);      // Simulation
+		manager.EmplaceSystem<RenderPhaseSystem>(log, 1);   // Render
+		manager.EmplaceSystem<TrackingSystem>(log, 2);      // Simulation
+		pce::Registry registry;
+		manager.Update(registry, 1.f);
+		REQUIRE(log->order == std::vector<int>{0, 2, 1});
+	}
+
+	SECTION("Render systems keep registration order among themselves") {
+		pce::SystemManager manager;
+		auto log = std::make_shared<SystemCallLog>();
+		manager.EmplaceSystem<RenderPhaseSystem>(log, 1);
+		manager.EmplaceSystem<RenderPhaseSystem>(log, 2);
+		pce::Registry registry;
+		manager.Update(registry, 1.f);
+		REQUIRE(log->order == std::vector<int>{1, 2});
 	}
 }
 

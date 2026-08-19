@@ -35,6 +35,8 @@ set(ENGINE_HEADERS
 		include/engine/graphicsModule/GraphicsContext.h
 		include/engine/graphicsModule/RenderQueue.h
 		include/engine/graphicsModule/Renderer.h
+		include/engine/graphicsModule/TextureHandle.h
+		include/engine/graphicsModule/SpriteFrame.h
 )
 
 # source files

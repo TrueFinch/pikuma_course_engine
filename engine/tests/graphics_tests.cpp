@@ -127,3 +127,68 @@ TEST_CASE("RenderQueue", "[RenderQueue]") {
 		REQUIRE(queue.Batches().empty());
 	}
 }
+
+TEST_CASE("RenderQueue.AddSpriteFrame", "[RenderQueue]") {
+	pce::RenderQueue queue;
+
+	SECTION("Non-rotated frame delegates like AddTexturedQuad") {
+		pce::SpriteFrame frame;
+		frame.texture = {1};
+		frame.uv = {0.f, 0.f, 0.5f, 0.5f};
+		frame.width = 10;
+		frame.height = 20;
+		frame.pivot = {0.5f, 0.5f};
+		frame.rotated = false;
+
+		queue.AddSpriteFrame(frame, {100.f, 100.f}, {10.f, 20.f});
+
+		const auto batches = queue.Batches();
+		REQUIRE(batches.size() == 1);
+		const auto& batch = batches[0];
+		REQUIRE(batch.key.texture.id == 1);
+		REQUIRE(batch.vertices.size() == 4);
+		// pivot (0.5, 0.5) - position in the center of the frame, UV as in AddTexturedQuad.
+		REQUIRE(batch.vertices[0].position == glm::vec2{95.f, 90.f});
+		REQUIRE(batch.vertices[0].uv == glm::vec2{0.f, 0.f});
+		REQUIRE(batch.vertices[1].uv == glm::vec2{0.5f, 0.f});
+	}
+
+	SECTION("Pivot shifts the draw position") {
+		pce::SpriteFrame frame;
+		frame.texture = {1};
+		frame.width = 10;
+		frame.height = 10;
+		frame.pivot = {0.f, 0.f}; // left-upper corner of the sprite
+		frame.rotated = false;
+
+		queue.AddSpriteFrame(frame, {100.f, 100.f}, {10.f, 10.f});
+
+		const auto batches = queue.Batches();
+		const auto& batch = batches[0];
+		// position - (pivot - 0.5) * size: (100,100) - (-5,-5) = (105,105) — quad center.
+		REQUIRE(batch.vertices[0].position == glm::vec2{100.f, 100.f});
+		REQUIRE(batch.vertices[2].position == glm::vec2{110.f, 110.f});
+	}
+
+	SECTION("Rotated frame transposes UVs") {
+		pce::SpriteFrame frame;
+		frame.texture = {1};
+		frame.uv = {0.f, 0.5f, 0.5f, 1.f}; // (u0, v0, u1, v1)
+		frame.width = 4; // the displayed dimensions are already expanded (region.height)
+		frame.height = 2; // region.width
+		frame.pivot = {0.5f, 0.5f};
+		frame.rotated = true;
+
+		queue.AddSpriteFrame(frame, {0.f, 0.f}, {4.f, 2.f});
+
+		const auto batches = queue.Batches();
+		REQUIRE(batches.size() == 1);
+		const auto& batch = batches[0];
+		REQUIRE(batch.vertices.size() == 4);
+		// Promotion: TL→(u0,v1), TR→(u0,v0), BR→(u1,v0), BL→(u1,v1).
+		REQUIRE(batch.vertices[0].uv == glm::vec2{0.f, 1.f});
+		REQUIRE(batch.vertices[1].uv == glm::vec2{0.f, 0.5f});
+		REQUIRE(batch.vertices[2].uv == glm::vec2{0.5f, 0.5f});
+		REQUIRE(batch.vertices[3].uv == glm::vec2{0.5f, 1.f});
+	}
+}

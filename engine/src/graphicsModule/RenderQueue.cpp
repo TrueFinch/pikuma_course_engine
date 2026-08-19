@@ -48,6 +48,46 @@ void pce::RenderQueue::AddTexturedQuad(
 	}
 }
 
+void pce::RenderQueue::AddSpriteFrame(
+	const SpriteFrame& frame, glm::vec2 position, glm::vec2 size,
+	uint32 color, float rotation, int layer
+) {
+	// Pivot is normalized (0..1): (0.5, 0.5) - position in the center of the frame (like AddTexturedQuad),
+	// (0, 0) - the position is the left-upper corner of the sprite.
+	position -= (frame.pivot - glm::vec2{0.5f}) * size;
+
+	if (!frame.rotated) {
+		AddTexturedQuad(frame.texture, position, size, frame.uv, color, rotation, layer);
+		return;
+	}
+
+	// Rotated region (spine convention: stored rotated 90° clockwise).
+	// Unwind - UV transposition: TL→(u0,v1), TR→(u0,v0), BR→(u1,v0), BL→(u1,v1).
+	const glm::vec2 halfSize = size / 2.f;
+	const float cosA = std::cos(rotation);
+	const float sinA = std::sin(rotation);
+
+	const std::array<glm::vec2, 4> localCorners({
+		{-halfSize.x, -halfSize.y}, {halfSize.x, -halfSize.y},
+		{halfSize.x, halfSize.y}, {-halfSize.x, halfSize.y},
+	});
+	const std::array<glm::vec2, 4> uvs({
+		{frame.uv.x, frame.uv.w}, {frame.uv.x, frame.uv.y},
+		{frame.uv.z, frame.uv.y}, {frame.uv.z, frame.uv.w},
+	});
+
+	std::array<Vertex, 4> vertices;
+	for (auto i = 0; i < 4; ++i) {
+		const glm::vec2 rotated{
+			localCorners[i].x * cosA - localCorners[i].y * sinA,
+			localCorners[i].x * sinA + localCorners[i].y * cosA,
+		};
+		vertices[i] = {position + rotated, color, uvs[i]};
+	}
+	constexpr std::array<uint32, 6> quadIndices{0, 1, 2, 0, 2, 3,};
+	AddMesh(frame.texture, vertices, quadIndices, layer);
+}
+
 void pce::RenderQueue::AddMesh(
 	TextureHandle texture, std::span<const Vertex> vertices, std::span<const uint32> indices,
 	int layer

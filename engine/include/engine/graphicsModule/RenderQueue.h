@@ -12,6 +12,8 @@
 #include <glm/vec2.hpp>
 #include <glm/vec4.hpp>
 
+#include "engine/graphicsModule/SpriteFrame.h"
+#include "engine/graphicsModule/TextureHandle.h"
 #include "engine/utilsModule/Types.h"
 
 namespace pce {
@@ -20,12 +22,6 @@ namespace pce {
 		uint32 color = 0xFFFFFFFF; // RGBA
 		glm::vec2 uv; // 0..1
 		// IMPORTANT: order of fields must match with SDL_Vertex
-	};
-
-	struct TextureHandle {
-		uint32 id = 0;
-
-		auto operator<=>(const TextureHandle&) const = default;
 	};
 
 	struct BatchKey {
@@ -42,7 +38,7 @@ namespace pce {
 		std::vector<Vertex> vertices{};
 		std::vector<uint32> indices{};
 	};
-}
+} // namespace pce
 
 template<>
 struct std::hash<pce::BatchKey> {
@@ -54,15 +50,6 @@ struct std::hash<pce::BatchKey> {
 };
 
 namespace pce {
-	struct DrawCall {
-		TextureHandle texture;
-		uint32 vertexOffset = 0;
-		uint32 vertexCount = 0;
-		uint32 indexOffset = 0;
-		uint32 indexCount = 0;
-		int layer = 0; // z ordering
-	};
-
 	class RenderQueue {
 	public:
 		void AddSprite(glm::vec2 position, glm::vec2 size, uint32 color = 0xFFFFFFFF, float rotation = 0.f,
@@ -71,6 +58,11 @@ namespace pce {
 		void AddTexturedQuad(TextureHandle texture, glm::vec2 position, glm::vec2 size,
 							glm::vec4 uv, uint32 color = 0xFFFFFFFF,
 							float rotation = 0.f, int layer = 0);
+
+		// Sprite from the atlas: it takes into account pivot (position shift) and rotated
+		// (transposed UVs). For a non-rotated frame, delegates to AddTexturedQuad.
+		void AddSpriteFrame(const SpriteFrame& frame, glm::vec2 position, glm::vec2 size,
+							uint32 color = 0xFFFFFFFF, float rotation = 0.f, int layer = 0);
 
 		void AddMesh(TextureHandle texture, std::span<const Vertex> vertices, std::span<const uint32> indices,
 					int layer = 0);

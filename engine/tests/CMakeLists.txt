@@ -4,6 +4,7 @@ add_executable(engine_tests
 		ecs_tests.cpp
 		engine_tests.cpp
 		graphics_tests.cpp
+		assets_tests.cpp
 )
 
 target_link_libraries(engine_tests

@@ -12,6 +12,8 @@ target_compile_options(${ENGINE_LIB} PRIVATE -std=c++20)
 
 # header files
 set(ENGINE_HEADERS
+		include/engine/assetsModule/TextureData.h
+		include/engine/assetsModule/TextureLoader.h
 		include/engine/coreModule/Game.h
 		include/engine/utilsModule/Types.h
 
@@ -37,6 +39,8 @@ set(ENGINE_HEADERS
 
 # source files
 set(ENGINE_SOURCES
+		src/assetsModule/TextureLoader.cpp
+
 		src/coreModule/Game.cpp
 		src/logModule/Log.cpp
 		src/logModule/LogManager.cpp

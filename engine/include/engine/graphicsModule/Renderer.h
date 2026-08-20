@@ -7,6 +7,8 @@
 #include <memory>
 #include <vector>
 
+#include "ITextureRegistry.h"
+
 struct SDL_Window;
 struct SDL_Renderer;
 
@@ -28,6 +30,10 @@ namespace pce {
 		void Flush(const RenderQueue& queue) const;
 
 		void EndFrame() const;
+
+		ITextureRegistry& GetTextureRegistry();
+
+		const ITextureRegistry& GetTextureRegistry() const;
 
 		// todo: add render target later
 	private:

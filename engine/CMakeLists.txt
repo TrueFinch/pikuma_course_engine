@@ -12,8 +12,10 @@ target_compile_options(${ENGINE_LIB} PRIVATE -std=c++20)
 
 # header files
 set(ENGINE_HEADERS
+		include/engine/assetsModule/AssetsManager.h
 		include/engine/assetsModule/TextureData.h
 		include/engine/assetsModule/TextureLoader.h
+
 		include/engine/coreModule/Game.h
 		include/engine/utilsModule/Types.h
 
@@ -36,11 +38,13 @@ set(ENGINE_HEADERS
 		include/engine/graphicsModule/RenderQueue.h
 		include/engine/graphicsModule/Renderer.h
 		include/engine/graphicsModule/TextureHandle.h
-		include/engine/graphicsModule/SpriteFrame.h
+		include/engine/graphicsModule/SpriteRegion.h
+		include/engine/graphicsModule/ITextureRegistry.h
 )
 
 # source files
 set(ENGINE_SOURCES
+		src/assetsModule/AssetsManager.cpp
 		src/assetsModule/TextureLoader.cpp
 
 		src/coreModule/Game.cpp

@@ -12,8 +12,8 @@ namespace pce {
 	// Decoded image: RGBA8, row-major (width * height * 4 bytes).
 	// Contract: pixel bytes are in order R,G,B,A.
 	struct TextureData {
-		uint32 width{};
-		uint32 height{};
+		uint16 width{};
+		uint16 height{};
 		std::vector<uint8> rgba;
 	};
 } // namespace pce

@@ -33,6 +33,7 @@ namespace pce {
 		TextureRegistry& operator=(const TextureRegistry&) = delete;
 
 		TextureHandle LoadTexture(std::string_view filePath) override {
+			// todo check if texture was already loaded
 			const auto data = m_loader.Load(filePath);
 			if (!data) {
 				logError("[TextureRegistry::LoadTexture]: Failed to load texture from {}!]", filePath);
@@ -64,10 +65,10 @@ namespace pce {
 				return {};
 			}
 
-			const uint32 id = m_nextTextureID++;
+			const TextureHandle id{m_nextTextureID++};
 			m_textures.emplace(id, std::move(sdlTexture));
-			m_textureInfos.emplace(id, TextureInfo{data.width, data.height});
-			return {id};
+			m_textureInfos.emplace(id, TextureInfo{id, data.width, data.height});
+			return id;
 		}
 
 		void DestroyTexture(TextureHandle texture) noexcept override {
@@ -90,6 +91,11 @@ namespace pce {
 				return nullptr;
 			}
 			return it->second.get();
+		}
+
+		void Clear() override {
+			m_textures.clear();
+			m_textureInfos.clear();
 		}
 
 	private:

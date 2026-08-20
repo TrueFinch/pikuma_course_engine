@@ -11,8 +11,8 @@
 namespace pce {
 	struct VelocityComponent: virtual BaseComponent<VelocityComponent> {
 		static constexpr std::string_view COMPONENT_NAME = "VelocityComponent";
-		glm::vec2 velocity;
-		glm::vec2 acceleration;
+		glm::vec2 velocity{};
+		glm::vec2 acceleration{};
 		float maxSpeed = 10.0f;
 
 		explicit VelocityComponent() = default;

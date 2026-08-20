@@ -62,6 +62,7 @@ TEST_CASE("RenderQueue", "[RenderQueue]") {
 		queue.AddSprite({0.f, 0.f}, {0.5f, 0.5f});
 		queue.AddTexturedQuad({2}, {0.f, 0.f}, {10.f, 10.f}, {0.f, 0.f, 1.f, 1.f});
 
+		queue.SortBatches();
 		const auto batches = queue.Batches();
 		REQUIRE(batches.size() == 3);
 		// inside layer 0 batches sorted by texture id
@@ -87,6 +88,7 @@ TEST_CASE("RenderQueue", "[RenderQueue]") {
 		queue.AddTexturedQuad({2}, {0.f, 0.f}, {10.f, 10.f}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFF, 0.f, 0);
 		queue.AddTexturedQuad({1}, {0.f, 0.f}, {10.f, 10.f}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFF, 0.f, 0);
 
+		queue.SortBatches();
 		const auto batches = queue.Batches();
 		REQUIRE(batches.size() == 3);
 		// layer ordered: all zero layers are first, then layer 1
@@ -132,7 +134,7 @@ TEST_CASE("RenderQueue.AddSpriteFrame", "[RenderQueue]") {
 	pce::RenderQueue queue;
 
 	SECTION("Non-rotated frame delegates like AddTexturedQuad") {
-		pce::SpriteFrame frame;
+		pce::SpriteRegion frame;
 		frame.texture = {1};
 		frame.uv = {0.f, 0.f, 0.5f, 0.5f};
 		frame.width = 10;
@@ -140,7 +142,7 @@ TEST_CASE("RenderQueue.AddSpriteFrame", "[RenderQueue]") {
 		frame.pivot = {0.5f, 0.5f};
 		frame.rotated = false;
 
-		queue.AddSpriteFrame(frame, {100.f, 100.f}, {10.f, 20.f});
+		queue.AddSpriteRegion(frame, {100.f, 100.f}, {10.f, 20.f});
 
 		const auto batches = queue.Batches();
 		REQUIRE(batches.size() == 1);
@@ -154,14 +156,14 @@ TEST_CASE("RenderQueue.AddSpriteFrame", "[RenderQueue]") {
 	}
 
 	SECTION("Pivot shifts the draw position") {
-		pce::SpriteFrame frame;
+		pce::SpriteRegion frame;
 		frame.texture = {1};
 		frame.width = 10;
 		frame.height = 10;
 		frame.pivot = {0.f, 0.f}; // left-upper corner of the sprite
 		frame.rotated = false;
 
-		queue.AddSpriteFrame(frame, {100.f, 100.f}, {10.f, 10.f});
+		queue.AddSpriteRegion(frame, {100.f, 100.f}, {10.f, 10.f});
 
 		const auto batches = queue.Batches();
 		const auto& batch = batches[0];
@@ -171,7 +173,7 @@ TEST_CASE("RenderQueue.AddSpriteFrame", "[RenderQueue]") {
 	}
 
 	SECTION("Rotated frame transposes UVs") {
-		pce::SpriteFrame frame;
+		pce::SpriteRegion frame;
 		frame.texture = {1};
 		frame.uv = {0.f, 0.5f, 0.5f, 1.f}; // (u0, v0, u1, v1)
 		frame.width = 4; // the displayed dimensions are already expanded (region.height)
@@ -179,7 +181,7 @@ TEST_CASE("RenderQueue.AddSpriteFrame", "[RenderQueue]") {
 		frame.pivot = {0.5f, 0.5f};
 		frame.rotated = true;
 
-		queue.AddSpriteFrame(frame, {0.f, 0.f}, {4.f, 2.f});
+		queue.AddSpriteRegion(frame, {0.f, 0.f}, {4.f, 2.f});
 
 		const auto batches = queue.Batches();
 		REQUIRE(batches.size() == 1);

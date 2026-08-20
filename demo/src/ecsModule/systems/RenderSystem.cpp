@@ -15,10 +15,13 @@ pce::SystemPhase pce_demo::RenderSystem::GetPhase() const noexcept {
 void pce_demo::RenderSystem::Update(pce::Registry& registry, pce::CommandBuffer& commandBuffer, float dt) {
 	auto view = registry.View<pce::TransformComponent, pce::SpriteComponent>();
 	view.Each([&renderQueue = m_renderQueue](pce::TransformComponent& transform, pce::SpriteComponent& sprite) {
-		renderQueue.AddSprite(transform.position, {
-								static_cast<float>(sprite.width),
-								static_cast<float>(sprite.height)
-							});
+		renderQueue.AddSpriteRegion(
+			sprite.region,
+			transform.position,
+			{sprite.region.width, sprite.region.height},
+			0xFFFFFFFF,
+			transform.rotation,
+			0);
 	});
 
 	//TODO: draw game objects

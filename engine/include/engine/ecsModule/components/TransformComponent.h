@@ -11,9 +11,9 @@
 namespace pce {
 	struct TransformComponent: virtual BaseComponent<TransformComponent> {
 		static constexpr std::string_view COMPONENT_NAME = "TransformComponent";
-		glm::vec2 position;
-		glm::vec2 scale;
-		float rotation;
+		glm::vec2 position{};
+		glm::vec2 scale{};
+		float rotation{};
 
 		explicit TransformComponent() = default;
 

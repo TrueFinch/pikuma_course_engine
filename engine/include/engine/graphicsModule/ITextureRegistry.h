@@ -29,5 +29,7 @@ namespace pce {
 
 		// Metadata of the registered texture (nullopt - handle not found).
 		virtual std::optional<TextureInfo> GetTextureInfo(TextureHandle texture) const = 0;
+
+		virtual void Clear() = 0;
 	};
 } // namespace pce

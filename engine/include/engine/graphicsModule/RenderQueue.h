@@ -12,7 +12,7 @@
 #include <glm/vec2.hpp>
 #include <glm/vec4.hpp>
 
-#include "engine/graphicsModule/SpriteFrame.h"
+#include "engine/graphicsModule/SpriteRegion.h"
 #include "engine/graphicsModule/TextureHandle.h"
 #include "engine/utilsModule/Types.h"
 
@@ -61,7 +61,7 @@ namespace pce {
 
 		// Sprite from the atlas: it takes into account pivot (position shift) and rotated
 		// (transposed UVs). For a non-rotated frame, delegates to AddTexturedQuad.
-		void AddSpriteFrame(const SpriteFrame& frame, glm::vec2 position, glm::vec2 size,
+		void AddSpriteRegion(const SpriteRegion& frame, glm::vec2 position, glm::vec2 size,
 							uint32 color = 0xFFFFFFFF, float rotation = 0.f, int layer = 0);
 
 		void AddMesh(TextureHandle texture, std::span<const Vertex> vertices, std::span<const uint32> indices,

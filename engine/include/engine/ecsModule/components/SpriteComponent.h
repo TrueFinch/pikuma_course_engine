@@ -5,18 +5,18 @@
 #pragma once
 
 #include "engine/ecsModule/ECS.h"
+#include "engine/graphicsModule/SpriteRegion.h"
 
 namespace pce {
 	struct SpriteComponent: virtual BaseComponent<SpriteComponent> {
 		static constexpr std::string_view COMPONENT_NAME = "SpriteComponent";
-		int width{};
-		int height{};
+		SpriteRegion region;
 
 		explicit SpriteComponent() = default;
 
-		explicit SpriteComponent(int width, int height): width(width), height(height) {}
+		explicit SpriteComponent(SpriteRegion region): region(region) {}
 	};
-} // pce
+} // namespace pce
 
 template<>
 struct fmt::formatter<pce::SpriteComponent> {
@@ -27,10 +27,9 @@ struct fmt::formatter<pce::SpriteComponent> {
 	static auto format(const pce::SpriteComponent& component, format_context& ctx) {
 		return format_to(
 			ctx.out(),
-			"{}: {{width: {}, height: {}}}",
+			"{}: {{region: {}}}",
 			pce::SpriteComponent::GetName(),
-			component.width,
-			component.height
+			component.region
 		);
 	}
 };

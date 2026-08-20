@@ -9,6 +9,8 @@
 #include <string>
 
 #include "engine/assetsModule/TextureLoader.h"
+#include "engine/logModule/LogManager.h"
+#include "engine/logModule/LogManagerInstance.h"
 
 namespace {
 	std::filesystem::path WriteTempFile(const std::string& fileName, const std::string& contents) {
@@ -20,6 +22,8 @@ namespace {
 }
 
 TEST_CASE("TextureLoader", "[TextureLoader]") {
+	pce::logModule::LogManagerInstance::Init(pce::logModule::LogManager::Create());
+
 	SECTION("Loads a 2x2 PPM image into RGBA8 row-major data") {
 		// P6 PPM: red, green, blue, white.
 		const std::string body =

@@ -7,6 +7,7 @@
 #include <SDL_events.h>
 #include <SDL_timer.h>
 
+#include "engine/assetsModule/AssetsManager.h"
 #include "engine/ecsModule/ECS.h"
 #include "engine/graphicsModule/GraphicsContext.h"
 #include "engine/logModule/Log.h"
@@ -24,10 +25,13 @@ bool pce::Game::Initialize() {
 	logModule::LogManagerInstance::Init(logModule::LogManager::Create());
 	logModule::LogManagerInstance::GetInstance().RegisterObserver(std::make_unique<logModule::SpdLogger>());
 	m_graphics = std::make_unique<GraphicsContext>();
-	return m_graphics->Initialize(1280, 800);
-
+	if (!m_graphics->Initialize(1280, 800)) {
+		return false;
+	}
+	m_assetsManager = std::make_unique<AssetsManager>(m_graphics->GetRenderer().GetTextureRegistry());
 	// TODO: add toggle fullscreen to settings
 	// SDL_SetWindowFullscreen(m_window.get(), SDL_WINDOW_FULLSCREEN_DESKTOP);
+	return true;
 }
 
 void pce::Game::Run() {
@@ -42,6 +46,7 @@ void pce::Game::Run() {
 }
 
 void pce::Game::Destroy() {
+	m_assetsManager.reset();
 	m_graphics.reset(); // GraphicsContext::~GraphicsContext -> SDL_Quit
 }
 
@@ -55,6 +60,11 @@ pce::SystemManager& pce::Game::GetSystemManager() {
 
 pce::RenderQueue& pce::Game::GetRenderQueue() {
 	return m_renderQueue;
+}
+
+pce::AssetsManager& pce::Game::GetAssetsManager() {
+	PCE_ASSERT(m_assetsManager, "[Game::GetAssetsManager]: assets manager is not initialized!");
+	return *m_assetsManager;
 }
 
 void pce::Game::ProcessInput() {

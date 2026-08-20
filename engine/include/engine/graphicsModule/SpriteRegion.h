@@ -11,7 +11,7 @@
 #include "TextureHandle.h"
 
 namespace pce {
-	struct SpriteFrame {
+	struct SpriteRegion {
 		TextureHandle texture;
 		glm::vec4 uv{0.f, 0.f, 1.f, 1.f};
 		glm::uint16 width{};
@@ -22,12 +22,12 @@ namespace pce {
 } // namespace pce
 
 template<>
-struct fmt::formatter<pce::SpriteFrame> {
+struct fmt::formatter<pce::SpriteRegion> {
 	static constexpr auto parse(const format_parse_context& ctx) {
 		return ctx.begin();
 	}
 
-	static auto format(const pce::SpriteFrame& spriteFrame, format_context& ctx) {
+	static auto format(const pce::SpriteRegion& spriteFrame, format_context& ctx) {
 		return format_to(
 			ctx.out(),
 			"texture id: {}, uv: [{}, {}, {}, {}], width: {}, height: {}, pivot: [{}, {}], rotated: {}",

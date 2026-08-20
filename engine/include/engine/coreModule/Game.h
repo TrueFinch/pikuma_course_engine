@@ -10,6 +10,7 @@
 #include "engine/utilsModule/Types.h"
 
 namespace pce {
+	class AssetsManager;
 	class GraphicsContext;
 
 	class Game {
@@ -30,6 +31,8 @@ namespace pce {
 
 		[[nodiscard]] RenderQueue& GetRenderQueue();
 
+		[[nodiscard]] AssetsManager& GetAssetsManager();
+
 	private:
 		void ProcessInput();
 
@@ -47,6 +50,7 @@ namespace pce {
 
 		RenderQueue m_renderQueue;
 		std::unique_ptr<GraphicsContext> m_graphics;
+		std::unique_ptr<AssetsManager> m_assetsManager;
 
 		Registry m_registry;
 		SystemManager m_systemManager;

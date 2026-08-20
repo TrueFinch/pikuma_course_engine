@@ -48,8 +48,8 @@ void pce::RenderQueue::AddTexturedQuad(
 	}
 }
 
-void pce::RenderQueue::AddSpriteFrame(
-	const SpriteFrame& frame, glm::vec2 position, glm::vec2 size,
+void pce::RenderQueue::AddSpriteRegion(
+	const SpriteRegion& frame, glm::vec2 position, glm::vec2 size,
 	uint32 color, float rotation, int layer
 ) {
 	// Pivot is normalized (0..1): (0.5, 0.5) - position in the center of the frame (like AddTexturedQuad),
